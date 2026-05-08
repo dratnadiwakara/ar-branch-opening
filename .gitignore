@@ -1,0 +1,56 @@
+# LaTeX build output (root or per-track)
+**/latex/build/
+*.aux
+*.log
+*.out
+*.bbl
+*.blg
+*.toc
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+*.lof
+*.lot
+*.bcf
+*.run.xml
+*.nav
+*.snm
+*.vrb
+*.dvi
+*.ps
+
+# R artifacts
+.Rhistory
+.RData
+.Rproj.user/
+*.Rproj
+
+# Python
+.venv/
+venv/
+env/
+.env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Data (never committed) — root data/ and per-track tracks/<name>/data/
+/data/
+tracks/*/data/
+
+# Downloaded PDFs (large; gitignored)
+related-papers/
+
+# Scratch / archive folders
+_delete/
+archives/
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+.claude/worktrees/

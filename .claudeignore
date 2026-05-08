@@ -1,0 +1,52 @@
+# Data (large / binary — keep out of Claude context)
+/data/
+tracks/*/data/
+related-papers/
+
+# Scratch / archive folders
+_delete/
+archives/
+
+# LaTeX build output (root or per-track)
+**/latex/build/
+*.aux
+*.log
+*.out
+*.bbl
+*.blg
+*.toc
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+*.lof
+*.lot
+*.bcf
+*.run.xml
+*.nav
+*.snm
+*.vrb
+*.dvi
+*.ps
+
+# R binary/data artifacts
+*.rds
+*.parquet
+*.csv
+*.feather
+*.RData
+.Rhistory
+.Rproj.user
+
+# Python
+.venv/
+venv/
+env/
+.env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pkl
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/

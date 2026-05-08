@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ page.title | default: site.title }}</title>
+  <link rel="stylesheet" href="{{ '/css/site.css' | relative_url }}">
+  <!-- Hypothesis -->
+  <script async src="https://hypothes.is/embed.js"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 1024px; margin: 0 0 0 0; padding: 2rem 1rem; line-height: 1.5; box-sizing: border-box; }
+    h1 { font-size: 1.25rem; color: #333; }
+    h2 { font-size: 1.1rem; margin-top: 1.5rem; }
+    h3 { font-size: 1rem; margin-top: 1rem; }
+    ul { list-style: none; padding: 0; }
+    li { margin-bottom: 1rem; }
+    a { color: #012169; text-decoration: none; font-weight: 600; }
+    a:hover { text-decoration: underline; }
+    .desc { font-size: 0.9rem; color: #555; margin-top: 0.25rem; }
+    p { margin: 0.5rem 0; }
+    pre, code { font-family: ui-monospace, monospace; font-size: 0.9em; background: #f5f5f5; padding: 0.2em 0.4em; border-radius: 3px; }
+    pre { padding: 0.75rem; overflow-x: auto; }
+    pre code { padding: 0; background: none; }
+    blockquote { margin: 0.5rem 0; padding-left: 1rem; border-left: 3px solid #ddd; color: #555; }
+    img { max-width: 100%; height: auto; display: block; }
+  </style>
+</head>
+<body>
+  {{ content }}
+</body>
+</html>

@@ -1,0 +1,30 @@
+/* Shared styles for docs/ (included by _layouts/default.html) */
+
+/* AI-written interpretation box: bordered block, visually distinct */
+.ai-written-box {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 0.75rem 1rem;
+  margin: 1rem 0;
+  background: #fafafa;
+}
+
+/* Red label for "AI WRITTEN:" prefix */
+.ai-written-label {
+  color: #b91c1c;
+}
+
+/* Green "Addressed" / response callouts (e.g. referee comment responses) */
+.callout-addressed {
+  border-left: 4px solid #15803d;
+  padding: 0.5rem 0 0.5rem 1rem;
+  margin: 0.75rem 0;
+  background: #f0fdf4;
+}
+
+/* Results index: description under each numbered link */
+.description {
+  font-size: 0.95rem;
+  color: #525252;
+  margin-top: 0.15rem;
+}
