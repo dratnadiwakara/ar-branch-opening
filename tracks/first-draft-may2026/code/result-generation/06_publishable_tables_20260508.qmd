@@ -1,0 +1,434 @@
+---
+title: "Publishable tables — bucketed regressions"
+format: html
+execute:
+  warning: false
+  message: false
+type: source
+---
+
+```{r setup}
+rm(list = ls())
+source("tracks/first-draft-may2026/code/common_first_draft.R")
+
+# ---- Toggles ----------------------------------------------------------------
+save_tables <- FALSE   # set TRUE to write .tex files to tables_dir
+
+# ---- Estimation choices (change in one place) -------------------------------
+cl <- ~ RSSDID + zip5
+```
+
+```{r dict}
+# Variable label dictionary used by every etable() call below.
+# Extends var_labels (defined in common_first_draft.R).
+table_dict <- c(
+  var_labels,
+  # First-stage labels
+  deposit_exp_chg         = "Deposit expense change",
+  factor_age_bin          = "Age bins",
+  dividend_frac           = "Dividend recipients (frac)",
+  college_frac            = "College educated (frac)",
+  sophisticated_frac      = "Sophisticated households (frac)",
+  `log(family_income)`    = "log(family income)",
+  bank_hhi                = "Bank HHI",
+  `log(bank_assets)`      = "log(bank assets)",
+  population_density      = "Population density",
+  trans_accts_frac_assets = "Transaction accts / assets",
+  uninsured_deposits_frac = "Uninsured deposit share",
+  time_deposits_assets    = "Time deposits / assets",
+  # Outcome
+  opening                 = "Branch opening (0/1)",
+  # Fixed-effect components (fixest translates each side of `^`)
+  RSSDID                  = "Bank",
+  yr                      = "Year",
+  state_fips              = "State",
+  zip5                    = "Zip"
+)
+setFixest_dict(table_dict)
+```
+
+```{r load}
+master_parts <- Sys.glob(file.path(data_dir, "master_bank_zip_year_*_part*.rds"))
+dates        <- regmatches(master_parts, regexpr("\\d{8}", master_parts))
+latest_date  <- max(dates)
+master_parts <- sort(master_parts[dates == latest_date])
+bc_path      <- load_latest(file.path(data_dir, "bank_cycle_first_stage_*.rds"))
+
+dt <- rbindlist(lapply(master_parts, readRDS))
+bc <- setDT(readRDS(bc_path))
+```
+
+```{r prep}
+setorder(dt, RSSDID, zip5, yr)
+dt[, n_branches_lag1    := shift(n_branches_bzt,    1L), by = .(RSSDID, zip5)]
+dt[, bank_in_state_lag1 := shift(bank_in_state_bzt, 1L), by = .(RSSDID, zip5)]
+dt[, share_bzt_lag1     := shift(share_bzt,         1L), by = .(RSSDID, zip5)]
+dt[, opening := as.integer(n_branches_bzt > n_branches_lag1)]
+
+dt[, n_large_banks_zip      := sum(n_branches_bzt > 0L), by = .(yr, zip5)]
+dt[, n_large_banks_zip_lag1 := shift(n_large_banks_zip, 1L), by = .(RSSDID, zip5)]
+
+dt[, g_dep_zip_t1_t3 := log1p(dep_zip_total_lag1) - log1p(dep_zip_total_lag3)]
+dt[, g_hmda_t1_t3    := log1p(hmda_amt_lag1)      - log1p(hmda_amt_lag3)]
+dt[, g_cra_t1_t3     := log1p(cra_amt_lag1)       - log1p(cra_amt_lag3)]
+dt[, log_dep_zip_lag1    := log1p(dep_zip_total_lag1)]
+dt[, log_avg_agi_lag1    := log(avg_agi_lag1)]
+dt[, log_n_branches_lag1 := log1p(n_branches_lag1)]
+dt[, hhi_lag1            := deposit_hhi_zip_lag1 / 10000]
+dt[is.na(share_bzt_lag1), share_bzt_lag1 := 0]
+
+dt[!is.na(int_exp_assets_share_undercut),
+   high_IEA := as.integer(int_exp_assets_share_undercut > 0.5)]
+dt[!is.na(rate_paying_adv),
+   high_rate_paying := as.integer(rate_paying_adv > 0)]
+
+dt[, size_bucket := assign_bucket(bank_assets)]
+bc[, size_bucket := assign_bucket(bank_assets * 1000)]
+```
+
+```{r filter}
+ar_master <- dt[
+  yr <= 2024L                        &
+  !is.na(size_bucket)                &
+  !is.na(n_branches_lag1)            &
+  !is.na(bank_in_state_lag1)         &
+  !is.na(n_large_banks_zip_lag1)     &
+  !is.na(g_dep_zip_t1_t3)            &
+  !is.na(g_hmda_t1_t3)               &
+  !is.na(g_cra_t1_t3)                &
+  !is.na(log_dep_zip_lag1)           &
+  !is.na(log_avg_agi_lag1)           &
+  !is.na(log_pop_density_lag1)       &
+  !is.na(median_age_lag1)            &
+  !is.na(pct_college_educated_lag1)  &
+  !is.na(hhi_lag1)                   &
+  !is.na(no_bank_zip_lag1)
+]
+```
+
+```{r buckets}
+d_big <- copy(ar_master[size_bucket == "ge_100bn"])
+d_mid <- copy(ar_master[size_bucket == "10_100bn"])
+d_sml <- copy(ar_master[size_bucket == "1_10bn"])
+
+for (d in list(d_big, d_mid, d_sml)) {
+  d[, g_dep_zip_t1_t3           := winsor(g_dep_zip_t1_t3),           by = yr]
+  d[, g_hmda_t1_t3              := winsor(g_hmda_t1_t3),              by = yr]
+  d[, g_cra_t1_t3               := winsor(g_cra_t1_t3),               by = yr]
+  d[, median_age_lag1           := winsor(median_age_lag1),           by = yr]
+  d[, pct_college_educated_lag1 := winsor(pct_college_educated_lag1), by = yr]
+}
+```
+
+```{r macros}
+setFixest_fml(
+  ..fc = as.formula(paste("~", base_rhs)),
+  ..fe = ~ RSSDID^yr + state_fips^yr
+)
+```
+
+```{r helpers}
+# emit_table -----------------------------------------------------------------
+# Display etable in chat; optionally write .tex to tables_dir.
+# keep: NULL  -> show all coefficients (controls visible).
+#       char  -> regex vector of coefs to keep; adds "Controls = Yes" row.
+emit_table <- function(models, headers, file_stem,
+                       keep  = NULL,
+                       title = NULL) {
+  hide   <- !is.null(keep)
+  extra  <- if (hide) list("Controls" = rep("Yes", length(models))) else NULL
+
+  print(etable(models, headers = headers,
+               keep_raw   = keep,
+               extralines = extra,
+               digits     = 4,
+               digits.stats = 3,
+               fitstat    = ~ n + r2))
+
+  if (isTRUE(save_tables)) {
+    etable(models, headers = headers,
+           keep_raw   = keep,
+           extralines = extra,
+           digits     = 4,
+           digits.stats = 3,
+           fitstat    = ~ n + r2,
+           tex        = TRUE,
+           replace    = TRUE,
+           title      = title,
+           label      = paste0("tab:", file_stem),
+           file       = file.path(tables_dir, paste0(file_stem, ".tex")))
+    cat("Wrote:", file.path(tables_dir, paste0(file_stem, ".tex")), "\n")
+  }
+}
+
+# Economic-magnitude stats below each table:
+#   Mean of dependent variable + SD of key RHS, per column.
+# treats:  character vector (one entry per model). Use "x" or "x:y" for
+#          interactions; sd of the product is reported.
+# dvs:     character vector of dep-var names, one per model.
+# dts:     list of data.tables, one per model.
+table_stats <- function(headers, dvs, treats, dts) {
+  treat_sd <- function(d, treat) {
+    if (grepl(":", treat, fixed = TRUE)) {
+      parts <- strsplit(treat, ":", fixed = TRUE)[[1]]
+      x <- Reduce(`*`, lapply(parts, function(p) d[[p]]))
+    } else {
+      x <- d[[treat]]
+    }
+    sd(x, na.rm = TRUE)
+  }
+  out <- data.table(
+    Column        = headers,
+    Treatment     = treats,
+    `Mean(DV)`    = vapply(seq_along(dts), function(i)
+      sprintf("%.4f", mean(dts[[i]][[dvs[i]]], na.rm = TRUE)), character(1)),
+    `SD(treat)`   = vapply(seq_along(dts), function(i)
+      sprintf("%.4f", treat_sd(dts[[i]], treats[i])), character(1)),
+    N             = vapply(dts, function(d) format(nrow(d), big.mark = ","),
+                           character(1))
+  )
+  print(knitr::kable(out, format = "pipe"))
+}
+```
+
+## Deposit beta — first stage (bank-cycle data)
+
+```{r fs-fmls}
+fml_full <- deposit_exp_chg ~ factor_age_bin + dividend_frac + college_frac +
+  log(family_income) + bank_hhi + log(bank_assets) + population_density +
+  trans_accts_frac_assets + uninsured_deposits_frac + time_deposits_assets
+
+fml_soph <- deposit_exp_chg ~ sophisticated_frac + factor_age_bin +
+  log(family_income) + bank_hhi + log(bank_assets) + population_density +
+  trans_accts_frac_assets + uninsured_deposits_frac + time_deposits_assets
+```
+
+```{r fs-pooled}
+bc_e <- bc[cycle == "cycle_0406"]
+bc_m <- bc[cycle == "cycle_1619"]
+bc_l <- bc[cycle == "cycle_2224"]
+
+fs_e_full <- feols(fml_full, bc_e, notes = FALSE)
+fs_m_full <- feols(fml_full, bc_m, notes = FALSE)
+fs_l_full <- feols(fml_full, bc_l, notes = FALSE)
+
+
+fs_models  <- list(fs_e_full, fs_m_full, fs_l_full)
+fs_headers <- c("Early-F","Mid-F","Late-F")
+
+# First-stage: "controls" here ARE the spec; show only the focal demographic
+# coefficients (sophisticated_frac for the S spec; for the F spec there is
+# no single key coef — leave the small set of demographics visible).
+emit_table(fs_models, fs_headers, "tab_first_stage",
+           keep  = NULL,
+           title = "Deposit beta first stage")
+```
+
+```{r fs-stats}
+table_stats(
+  headers = fs_headers,
+  dvs     = rep("deposit_exp_chg", 6),
+  treats  = c("dividend_frac","dividend_frac","dividend_frac",
+              "sophisticated_frac","sophisticated_frac","sophisticated_frac"),
+  dts     = list(bc_e, bc_m, bc_l, bc_e, bc_m, bc_l)
+)
+```
+
+## Deposit beta — main regression
+
+```{r beta-subsets}
+d_big_b <- d_big[!is.na(deposit_beta) & is.finite(deposit_beta)]
+d_mid_b <- d_mid[!is.na(deposit_beta) & is.finite(deposit_beta)]
+d_sml_b <- d_sml[!is.na(deposit_beta) & is.finite(deposit_beta)]
+d_big_b[, deposit_beta := winsor(deposit_beta), by = yr]
+d_mid_b[, deposit_beta := winsor(deposit_beta), by = yr]
+d_sml_b[, deposit_beta := winsor(deposit_beta), by = yr]
+```
+
+```{r beta-main}
+m_beta_big <- feols(opening ~ deposit_beta + ..fc | ..fe, d_big_b, cluster = cl)
+m_beta_mid <- feols(opening ~ deposit_beta + ..fc | ..fe, d_mid_b, cluster = cl)
+m_beta_sml <- feols(opening ~ deposit_beta + ..fc | ..fe, d_sml_b, cluster = cl)
+
+# Per user spec: this is the ONLY table that prints control coefficients.
+emit_table(list(m_beta_big, m_beta_mid, m_beta_sml),
+           headers = c(">=$100B","$10B-$100B","$1B-$10B"),
+           file_stem = "tab_deposit_beta_main",
+           keep  = NULL,
+           title = "Branch opening on deposit beta — main")
+```
+
+```{r beta-stats}
+table_stats(
+  headers = c(">=$100B","$10B-$100B","$1B-$10B"),
+  dvs     = rep("opening", 3),
+  treats  = rep("deposit_beta", 3),
+  dts     = list(d_big_b, d_mid_b, d_sml_b)
+)
+```
+
+## Rate-paying capacity over incumbents
+
+```{r rp-subsets}
+d_big_e <- d_big[!is.na(rate_paying_adv) & is.finite(rate_paying_adv)]
+d_mid_e <- d_mid[!is.na(rate_paying_adv) & is.finite(rate_paying_adv)]
+d_sml_e <- d_sml[!is.na(rate_paying_adv) & is.finite(rate_paying_adv)]
+d_big_e[, rate_paying_adv := winsor(rate_paying_adv), by = yr]
+d_mid_e[, rate_paying_adv := winsor(rate_paying_adv), by = yr]
+d_sml_e[, rate_paying_adv := winsor(rate_paying_adv), by = yr]
+
+d_big_i <- d_big[!is.na(high_IEA)]
+d_mid_i <- d_mid[!is.na(high_IEA)]
+d_sml_i <- d_sml[!is.na(high_IEA)]
+```
+
+```{r rp-combined}
+m_rp_big  <- feols(opening ~ deposit_beta + high_rate_paying + ..fc | ..fe, d_big_e, cluster = cl)
+m_iea_big <- feols(opening ~ deposit_beta + high_IEA        + ..fc | ..fe, d_big_i, cluster = cl)
+m_rp_mid  <- feols(opening ~ deposit_beta + high_rate_paying + ..fc | ..fe, d_mid_e, cluster = cl)
+m_iea_mid <- feols(opening ~ deposit_beta + high_IEA        + ..fc | ..fe, d_mid_i, cluster = cl)
+m_rp_sml  <- feols(opening ~ deposit_beta + high_rate_paying + ..fc | ..fe, d_sml_e, cluster = cl)
+m_iea_sml <- feols(opening ~ deposit_beta + high_IEA        + ..fc | ..fe, d_sml_i, cluster = cl)
+
+emit_table(
+  list(m_rp_big, m_iea_big, m_rp_mid, m_iea_mid, m_rp_sml, m_iea_sml),
+  headers = c(">=$100B (rp)", ">=$100B (iea)",
+              "$10B-$100B (rp)", "$10B-$100B (iea)",
+              "$1B-$10B (rp)", "$1B-$10B (iea)"),
+  file_stem = "tab_rate_paying",
+  keep  = c("deposit_beta", "high_rate_paying", "high_IEA"),
+  title = "Branch opening on rate-paying advantage")
+```
+
+```{r rp-stats}
+table_stats(
+  headers = c(">=$100B (rp)", ">=$100B (iea)",
+              "$10B-$100B (rp)", "$10B-$100B (iea)",
+              "$1B-$10B (rp)", "$1B-$10B (iea)"),
+  dvs     = rep("opening", 6),
+  treats  = c("high_rate_paying","high_IEA",
+              "high_rate_paying","high_IEA",
+              "high_rate_paying","high_IEA"),
+  dts     = list(d_big_e, d_big_i, d_mid_e, d_mid_i, d_sml_e, d_sml_i)
+)
+```
+
+## Combined: deposit_beta x rate-paying advantage
+
+```{r comb-subsets}
+d_big_c <- d_big[!is.na(rate_paying_adv) & is.finite(rate_paying_adv) &
+                 !is.na(high_IEA) &
+                 !is.na(deposit_beta) & is.finite(deposit_beta)]
+d_mid_c <- d_mid[!is.na(rate_paying_adv) & is.finite(rate_paying_adv) &
+                 !is.na(high_IEA) &
+                 !is.na(deposit_beta) & is.finite(deposit_beta)]
+d_sml_c <- d_sml[!is.na(rate_paying_adv) & is.finite(rate_paying_adv) &
+                 !is.na(high_IEA) &
+                 !is.na(deposit_beta) & is.finite(deposit_beta)]
+for (d in list(d_big_c, d_mid_c, d_sml_c)) {
+  d[, rate_paying_adv  := winsor(rate_paying_adv), by = yr]
+  d[, deposit_beta     := winsor(deposit_beta),    by = yr]
+  d[, high_rate_paying := as.integer(rate_paying_adv > 0)]
+}
+```
+
+```{r combd}
+m09_rp_big  <- feols(opening ~ deposit_beta * high_rate_paying + ..fc | ..fe, d_big_c, cluster = cl)
+m09_iea_big <- feols(opening ~ deposit_beta * high_IEA         + ..fc | ..fe, d_big_c, cluster = cl)
+m09_rp_mid  <- feols(opening ~ deposit_beta * high_rate_paying + ..fc | ..fe, d_mid_c, cluster = cl)
+m09_iea_mid <- feols(opening ~ deposit_beta * high_IEA         + ..fc | ..fe, d_mid_c, cluster = cl)
+m09_rp_sml  <- feols(opening ~ deposit_beta * high_rate_paying + ..fc | ..fe, d_sml_c, cluster = cl)
+m09_iea_sml <- feols(opening ~ deposit_beta * high_IEA         + ..fc | ..fe, d_sml_c, cluster = cl)
+
+emit_table(
+  list(m09_rp_big, m09_iea_big, m09_rp_mid, m09_iea_mid, m09_rp_sml, m09_iea_sml),
+  headers = c(">=$100B (rp)", ">=$100B (iea)",
+              "$10B-$100B (rp)", "$10B-$100B (iea)",
+              "$1B-$10B (rp)", "$1B-$10B (iea)"),
+  file_stem = "tab_beta_x_advantage",
+  keep  = c("deposit_beta", "high_rate_paying", "high_IEA"),
+  title = "Deposit beta x rate-paying advantage")
+```
+
+```{r combd-stats}
+table_stats(
+  headers = c(">=$100B (rp)", ">=$100B (iea)",
+              "$10B-$100B (rp)", "$10B-$100B (iea)",
+              "$1B-$10B (rp)", "$1B-$10B (iea)"),
+  dvs     = rep("opening", 6),
+  treats  = c("deposit_beta:high_rate_paying","deposit_beta:high_IEA",
+              "deposit_beta:high_rate_paying","deposit_beta:high_IEA",
+              "deposit_beta:high_rate_paying","deposit_beta:high_IEA"),
+  dts     = list(d_big_c, d_big_c, d_mid_c, d_mid_c, d_sml_c, d_sml_c)
+)
+```
+
+## Cross-sell — additive
+
+```{r cs-add}
+m_cs_a_mort_big <- feols(opening ~ deposit_beta + mortgage_presence + ..fc | ..fe, d_big_b, cluster = cl)
+m_cs_a_cra_big  <- feols(opening ~ deposit_beta + cra_presence      + ..fc | ..fe, d_big_b, cluster = cl)
+m_cs_a_mort_mid <- feols(opening ~ deposit_beta + mortgage_presence + ..fc | ..fe, d_mid_b, cluster = cl)
+m_cs_a_cra_mid  <- feols(opening ~ deposit_beta + cra_presence      + ..fc | ..fe, d_mid_b, cluster = cl)
+m_cs_a_mort_sml <- feols(opening ~ deposit_beta + mortgage_presence + ..fc | ..fe, d_sml_b, cluster = cl)
+m_cs_a_cra_sml  <- feols(opening ~ deposit_beta + cra_presence      + ..fc | ..fe, d_sml_b, cluster = cl)
+
+emit_table(
+  list(m_cs_a_mort_big, m_cs_a_cra_big,
+       m_cs_a_mort_mid, m_cs_a_cra_mid,
+       m_cs_a_mort_sml, m_cs_a_cra_sml),
+  headers = c(">=$100B (mort)", ">=$100B (cra)",
+              "$10B-$100B (mort)", "$10B-$100B (cra)",
+              "$1B-$10B (mort)", "$1B-$10B (cra)"),
+  file_stem = "tab_cross_sell_additive",
+  keep  = c("deposit_beta", "mortgage_presence", "cra_presence"),
+  title = "Cross-sell additive")
+```
+
+```{r cs-add-stats}
+table_stats(
+  headers = c(">=$100B (mort)", ">=$100B (cra)",
+              "$10B-$100B (mort)", "$10B-$100B (cra)",
+              "$1B-$10B (mort)", "$1B-$10B (cra)"),
+  dvs     = rep("opening", 6),
+  treats  = c("mortgage_presence","cra_presence",
+              "mortgage_presence","cra_presence",
+              "mortgage_presence","cra_presence"),
+  dts     = list(d_big_b, d_big_b, d_mid_b, d_mid_b, d_sml_b, d_sml_b)
+)
+```
+
+## Cross-sell — interactions
+
+```{r cs-int}
+m_cs_i_mort_big <- feols(opening ~ deposit_beta * mortgage_presence + ..fc | ..fe, d_big_b, cluster = cl)
+m_cs_i_cra_big  <- feols(opening ~ deposit_beta * cra_presence      + ..fc | ..fe, d_big_b, cluster = cl)
+m_cs_i_mort_mid <- feols(opening ~ deposit_beta * mortgage_presence + ..fc | ..fe, d_mid_b, cluster = cl)
+m_cs_i_cra_mid  <- feols(opening ~ deposit_beta * cra_presence      + ..fc | ..fe, d_mid_b, cluster = cl)
+m_cs_i_mort_sml <- feols(opening ~ deposit_beta * mortgage_presence + ..fc | ..fe, d_sml_b, cluster = cl)
+m_cs_i_cra_sml  <- feols(opening ~ deposit_beta * cra_presence      + ..fc | ..fe, d_sml_b, cluster = cl)
+
+emit_table(
+  list(m_cs_i_mort_big, m_cs_i_cra_big,
+       m_cs_i_mort_mid, m_cs_i_cra_mid,
+       m_cs_i_mort_sml, m_cs_i_cra_sml),
+  headers = c(">=$100B (mort)", ">=$100B (cra)",
+              "$10B-$100B (mort)", "$10B-$100B (cra)",
+              "$1B-$10B (mort)", "$1B-$10B (cra)"),
+  file_stem = "tab_cross_sell_interaction",
+  keep  = c("deposit_beta", "mortgage_presence", "cra_presence"),
+  title = "Cross-sell interaction")
+```
+
+```{r cs-int-stats}
+table_stats(
+  headers = c(">=$100B (mort)", ">=$100B (cra)",
+              "$10B-$100B (mort)", "$10B-$100B (cra)",
+              "$1B-$10B (mort)", "$1B-$10B (cra)"),
+  dvs     = rep("opening", 6),
+  treats  = c("deposit_beta:mortgage_presence","deposit_beta:cra_presence",
+              "deposit_beta:mortgage_presence","deposit_beta:cra_presence",
+              "deposit_beta:mortgage_presence","deposit_beta:cra_presence"),
+  dts     = list(d_big_b, d_big_b, d_mid_b, d_mid_b, d_sml_b, d_sml_b)
+)
+```
