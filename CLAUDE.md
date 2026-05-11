@@ -225,7 +225,7 @@ If any script consumes data produced by `C:\Users\dimut\OneDrive\github\empirica
 ### Figure & Table Export
 
 - Each track owns its outputs end-to-end. Write directly to the track's LaTeX folders:
-  - Figures → `tracks/<name>/latex/figures/` as `.png` files with `bg = "white"` (and `.pdf` once finalized).
+  - Figures → `tracks/<name>/latex/figures/` as `.png` files only (with `bg = "white"`). Do not save `.pdf` versions.
   - Tables → `tracks/<name>/latex/tables/`. During active iteration, write a `.md` companion alongside the `.tex` so the user can scan results in chat without compiling LaTeX.
 - Never write outputs into another track's folder. If a result is genuinely shared (e.g., a descriptive table over the full sample used in multiple tracks), put it in the track that owns the prose and `\input{}` it from other tracks via a relative path.
 - Control exports with logical flags at the top of each script:
@@ -257,6 +257,61 @@ writeLines(as.character(md), paste0(tables_path, "tab_name.md"))
 - For descriptive stat tables, use `knitr::kable(df, format = "pipe")`.
 - Always emit the `.md` companion file in addition to the `.tex` so the user can read the table in chat without compiling LaTeX.
 - Do not use `capture.output(print(et))` -- it produces space-aligned text that line-wraps when the terminal is narrow and breaks the table into chunks.
+
+### Editing etable .tex Output (decimal alignment, tabular-only export)
+
+Saved `.tex` files in `tracks/<name>/latex/tables/` must contain **only** the `\begin{tabular}...\end{tabular}` block — never an outer `\begin{table}...\end{table}` wrapper. Section files (e.g. `results_current.tex`) own the table float, caption, label, `\resizebox`, and `\adddescription`. A nested `\begin{table}` from `etable()` triggers `! LaTeX Error: Not in outer par mode.`
+
+**Always pass `style.tex = style.tex("base")` to `etable()`.** This emits a bare `tabular` fragment with no `\begin{table}`, no `\caption{}`, and no `\label{}` — the canonical wrapper, caption, and label come from the inserter skill, not from the source `.tex` file. Skip `title=` and `label=` entirely.
+
+Do not pass `file=` to `etable()`. Capture the tex string, post-process (decimal alignment etc.), then `writeLines`.
+
+**Pattern:**
+
+```r
+tex_out <- etable(models, ..., tex = TRUE,
+                  style.tex = style.tex("base"))
+tex_out <- paste(as.character(tex_out), collapse = "\n")
+tex_out <- align_decimals(tex_out, n_models = length(models), digits = 4)
+writeLines(tex_out, file.path(tables_dir, paste0(file_stem, ".tex")))
+```
+
+**Transforms applied in `align_decimals(tex, n_models, digits)`:**
+
+1. **Defensive: strip any outer `\begin{table} ... \end{table}` wrapper.** With `style.tex = style.tex("base")` no wrapper is emitted, but keep this step as a guard. Keep only the tabular block:
+
+   ```r
+   m   <- regexpr("(?s)\\\\begin\\{tabular\\}.*?\\\\end\\{tabular\\}", tex, perl = TRUE)
+   tex <- regmatches(tex, m)
+   ```
+
+2. **Decimal-align coefficient columns via siunitx S columns.** Replace the `{lccc...}` column spec with `{lS[table-format=-1.D]S[...]...}`. Requires `\usepackage{siunitx}` plus `\sisetup{detect-all, input-symbols={()*}, table-align-text-after=false, table-align-text-before=false, table-format=-1.D}` in the preamble (D = `digits`).
+
+   ```r
+   fmt  <- sprintf("-1.%d", digits)
+   scol <- strrep(sprintf("S[table-format=%s]", fmt), n_models)
+   patt <- paste0("\\{l", strrep("c", n_models), "\\}")
+   tex  <- sub(patt, paste0("{l", scol, "}"), tex, perl = TRUE)
+   ```
+
+3. **Brace-wrap fixest significance stars** so the trailing `$^{***}$` is treated as literal text by the S column rather than parsed as a number:
+
+   ```r
+   tex <- gsub("(\\$\\^\\{\\*+\\}\\$)", "{\\1}", tex, perl = TRUE)
+   ```
+
+4. **Wrap every non-numeric cell — header AND body — in `\multicolumn{1}{c}{...}`.** S column rejects text headers (`Early-F`), `Yes`/`No` FE rows, math-macro cells (`$-7.93\times 10^{-5}$`), and thousands-separator integers (`1,164,694`). Walk every line between `\begin{tabular}` and `\end{tabular}` (not just the header band). Cell is "numeric-ish" only if it matches `^[-+0-9.()*$^{}\s]+$` — note: **no comma, no backslash, no letters**. Anything else gets wrapped.
+
+   - **Split on unescaped `&` only.** Note rows like `\emph{Clustered (Bank \& Zip) ...}` will be shredded if you split on `&` blindly. Use `strsplit(body, "(?<!\\\\)&", perl = TRUE)`.
+   - **Skip whole-row banner lines** of form `^\s*\\multicolumn\{N\}\{[lcr]\}\{...\}\\\\$` (SE-note, sig-codes footers) — pass them through untouched.
+
+**When NOT to use S columns.** If the table is dominated by text/math cells (Yes/No FE blocks, scientific-notation coefficients, fractions), use `dcolumn`'s `D{.}{.}{-1}` instead — it tolerates any prefix/suffix around the decimal without per-cell wrapping.
+
+**Operational notes.**
+
+- siunitx may not be pre-installed in MiKTeX. If `! LaTeX Error: File 'siunitx.sty' not found.`, run `mpm --install=siunitx` once.
+- After a failed `latexmk` run, the `.fdb_latexmk` DB caches the failure and refuses to retry. Either `rm -f build/main.*` or pass `-g` (go regardless) before recompiling.
+- The `bibtex` step on Windows + `-output-directory=build` may fail to find `main.bib` (path-format bug). If the document has no `\cite{}`, the failure is harmless — `pdflatex` still produces a valid PDF.
 
 ### Visualization Standards
 

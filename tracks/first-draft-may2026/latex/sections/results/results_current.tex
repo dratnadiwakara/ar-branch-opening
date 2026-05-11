@@ -1,7 +1,164 @@
 % Results — [PAPER_TITLE]
 % Last edited: [DATE]
 
-\section{Results}
-\label{sec:results}
+\clearpage
+\begin{figure}
+    \centering
+    \adddescription{
+    \small
+This figure plots the total number of FDIC-insured bank branches in the United States by year. The series is constructed as the count of branch-year observations in the FDIC Summary of Deposits, spanning the full coverage of the SOD through the most recent reporting year. The vertical axis reports branch counts; the horizontal axis is calendar year.
+    }
+    \includegraphics[width=0.75\textwidth]{figures/fig_us_branches_total.png}
+    \caption{Total U.S. Bank Branches}
+    \label{fig:us_branches_total}
+\end{figure}
 
-% Write section content here.
+\clearpage
+\begin{figure}
+    \centering
+    \adddescription{
+    \small
+This figure plots the annual count of de novo branch openings in the United States from 2012 onward, stacked by the opening bank's total-asset bucket at the time of opening. The vertical axis reports the number of openings; the horizontal axis is calendar year. An opening is the first appearance of a branch identifier (UNINUMBR) in the FDIC Summary of Deposits; institution-level transfers from the Office of Thrift Supervision to the Office of the Comptroller of the Currency in 2011 are excluded. Asset buckets are defined on the opening bank's reported SOD assets in the year of opening: $<$\$1B, \$1B--\$10B, \$10B--\$100B, and $\geq$\$100B. The four colors correspond to these four buckets in the legend, ordered from smallest at the bottom of the stack to largest at the top.
+    }
+    \includegraphics[width=0.75\textwidth]{figures/fig_openings_by_size_stacked.png}
+    \caption{De Novo Branch Openings by Bank Size}
+    \label{fig:openings_by_size_stacked}
+\end{figure}
+
+\clearpage
+\begin{figure}
+    \centering
+    \adddescription{
+    \small
+This figure presents the candidate-market geography for three large banks in three different years. Each panel shades Census ZIP Code Tabulation Areas (ZCTAs) by the bank's status in that ZIP for the indicated year: blue if the bank operated at least one branch in the ZIP, gold if the ZIP was inside the bank's opportunity set --- a Core Based Statistical Area (CBSA) where the bank operated, or a nonmetro county where the bank operated --- but the bank had no branch there. ZIPs outside the opportunity set are not filled. Panel A shows JPMorgan Chase in 2016, Panel B shows Bank of America in 2018, and Panel C shows Wells Fargo in 2022. ZCTA boundaries are drawn from the 2020 TIGER/Line shapefiles; the contiguous United States is shown.
+    }
+    \begin{minipage}{0.48\textwidth}
+        \centering
+        Panel A: JPMorgan Chase, 2016\\
+        \includegraphics[width=\textwidth]{figures/fig_map_jpm_2016.png}
+    \end{minipage}\hfill
+    \begin{minipage}{0.48\textwidth}
+        \centering
+        Panel B: Bank of America, 2018\\
+        \includegraphics[width=\textwidth]{figures/fig_map_boa_2018.png}
+    \end{minipage}
+    \vspace{0.5cm}\\
+    \begin{minipage}{0.48\textwidth}
+        \centering
+        Panel C: Wells Fargo, 2022\\
+        \includegraphics[width=\textwidth]{figures/fig_map_wfc_2022.png}
+    \end{minipage}
+    \caption{Candidate Markets for Three Large Banks}
+    \label{fig:map_candidate_markets}
+\end{figure}
+
+
+\clearpage
+\begin{table}[]
+    \centering
+    \adddescription{
+\small
+This table reports summary statistics for the bank--zip--year panel used in the branch-opening regressions, separately by bank-asset bucket. Panel A covers banks with assets above \$100B and reports the dependent variable, the key right-hand-side variables, and the full set of zip-level controls used in the regressions. Panels B and C cover banks with assets in \$10B--\$100B and \$1B--\$10B, respectively, and report only the dependent variable and key right-hand-side variables (the controls have the same definitions and similar moments and are therefore omitted to save space). The dependent variable, $opening$, equals one if bank $b$ first appears as a branch in zip $z$ in year $t$. The key right-hand-side variables are: the bank--cycle deposit beta, an indicator for a positive rate-paying advantage relative to incumbents, an indicator for an interest-expense-to-assets undercut share above 0.5, and indicators for the bank's mortgage and CRA small-business presence in the zip at $t-1$. The sample is restricted to non-missing values of the baseline controls and lags, and the variables ($\beta$, rate-paying advantage, and the zip-level growth and demographic controls) are winsorized within year at the 1st and 99th percentiles. Mean, standard deviation, the 10th, 50th, and 90th percentiles, and the number of non-missing observations are reported.
+    }
+
+    \vspace{0.25cm}
+{\small Panel A: Banks with Assets $\geq$ \$100B}\\
+    \resizebox{0.8\textwidth}{!}{
+\input{tables/tab_descriptive_stats_big}
+    }
+    \caption{Descriptive Statistics}
+    \label{tab:descriptive_stats}
+\end{table}
+
+\clearpage
+\begin{table}[]
+    \centering
+
+    \vspace{0.25cm}
+{\small Panel B: Banks with Assets \$10B--\$100B}\\
+    \resizebox{0.8\textwidth}{!}{
+\input{tables/tab_descriptive_stats_mid}
+    }
+
+\vspace{0.25cm}
+{\small Panel C: Banks with Assets \$1B--\$10B}\\
+    \resizebox{0.8\textwidth}{!}{
+\input{tables/tab_descriptive_stats_sml}
+    }
+\end{table}
+
+\clearpage
+\begin{table}[]
+    \centering
+    \adddescription{
+\small
+This table reports first-stage regressions of the change in deposit expense on bank and market characteristics for three sub-periods (Early, Mid, and Late). The dependent variable is the change in deposit expense. Explanatory variables include age bins, the fraction of dividend recipients, the fraction of college-educated residents, log family income, bank HHI, log bank assets, population density, transaction accounts over assets, the uninsured deposit share, and time deposits over assets. IID standard errors are reported in parentheses. *, **, and *** denote statistical significance at the 10\%, 5\%, and 1\% levels, respectively.
+    }
+
+    \resizebox{0.5\textwidth}{!}{
+\input{tables/tab_first_stage}
+    }
+    \caption{Deposit Beta First Stage}
+    \label{tab:first_stage}
+\end{table}
+
+\clearpage
+\begin{table}[]
+    \centering
+    \adddescription{
+\small
+This table reports linear probability model estimates of branch opening on the bank-cycle deposit beta and a battery of zip-level controls, separately by bank-size bucket. The dependent variable equals one if bank $b$ opens a branch in zip $z$ in year $t$. Columns 1--3 correspond to banks with assets of \$100B+, \$10B--\$100B, and \$1B--\$10B, respectively. Specifications include bank-by-year and state-by-year fixed effects. Standard errors (in parentheses) are clustered by bank and zip. *, **, and *** denote statistical significance at the 10\%, 5\%, and 1\% levels, respectively.
+    }
+
+    \resizebox{0.8\textwidth}{!}{
+\input{tables/tab_deposit_beta_main}
+    }
+    \caption{Branch Opening on Deposit Beta --- Main}
+    \label{tab:deposit_beta_main}
+\end{table}
+
+\clearpage
+\begin{table}[]
+    \centering
+    \adddescription{
+\small
+This table reports linear probability model estimates of branch opening on deposit beta and bank-level rate-paying capacity, separately by bank-size bucket. The dependent variable equals one if bank $b$ opens a branch in zip $z$ in year $t$. Within each size bucket, two columns alternate the proxy for rate-paying capacity: ``rp'' uses an indicator for the bank's rate-paying advantage relative to incumbents; ``iea'' uses an indicator for the bank's interest-expense-to-assets share undercut exceeding 0.5. Panel A reports additive specifications (deposit beta and the capacity proxy enter linearly). Panel B reports the deposit beta $\times$ capacity-proxy interaction. All specifications include the full set of zip-level controls, bank-by-year, and state-by-year fixed effects. Standard errors (in parentheses) are clustered by bank and zip. *, **, and *** denote statistical significance at the 10\%, 5\%, and 1\% levels, respectively.
+    }
+
+    \vspace{0.25cm}
+{\small Panel A: Additive Specification}\\
+    \resizebox{0.8\textwidth}{!}{
+\input{tables/tab_rate_paying}
+    }
+
+\vspace{0.25cm}
+{\small Panel B: Deposit Beta $\times$ Rate-Paying Advantage Interaction}\\
+    \resizebox{0.8\textwidth}{!}{
+\input{tables/tab_beta_x_advantage}
+    }
+    \caption{Branch Opening on Deposit Beta and Rate-Paying Advantage}
+    \label{tab:rate_paying_advantage}
+\end{table}
+
+\clearpage
+\begin{table}[]
+    \centering
+    \adddescription{
+\small
+This table reports linear probability model estimates of branch opening on deposit beta and bank-level cross-sell capacity, separately by bank-size bucket. The dependent variable equals one if bank $b$ opens a branch in zip $z$ in year $t$. Within each size bucket, two columns alternate the proxy for cross-sell capacity: ``mort'' uses an indicator for the bank's mortgage presence in the zip (HMDA, t-1); ``cra'' uses an indicator for the bank's CRA small-business lending presence in the zip (t-1). Panel A reports additive specifications (deposit beta and the cross-sell proxy enter linearly). Panel B reports the deposit beta $\times$ cross-sell-proxy interaction. All specifications include the full set of zip-level controls, bank-by-year, and state-by-year fixed effects. Standard errors (in parentheses) are clustered by bank and zip. *, **, and *** denote statistical significance at the 10\%, 5\%, and 1\% levels, respectively.
+    }
+
+    \vspace{0.25cm}
+{\small Panel A: Additive Specification}\\
+    \resizebox{0.8\textwidth}{!}{
+\input{tables/tab_cross_sell_additive}
+    }
+
+\vspace{0.25cm}
+{\small Panel B: Deposit Beta $\times$ Cross-Sell Capacity Interaction}\\
+    \resizebox{0.8\textwidth}{!}{
+\input{tables/tab_cross_sell_interaction}
+    }
+    \caption{Branch Opening on Deposit Beta and Cross-Sell Capacity}
+    \label{tab:cross_sell}
+\end{table}

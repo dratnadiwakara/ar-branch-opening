@@ -1,0 +1,43 @@
+> suppressPackageStartupMessages({library(DBI); library(duckdb); library(data.table)}); con <- dbConnect(duckdb::duckdb(), dbdir="C:/empirical-data-construction/call-reports-FFIEC/call-reports-ffiec.duckdb", read_only=TRUE); cat("=== schedule_rco columns sample ===\n"); print(head(dbGetQuery(con, "PRAGMA table_info(schedule_rco)"), 20)); cat("\n=== Q4 2024 sample: bs.deposits, RCONF045, RCONF049 ===\n"); print(setDT(dbGetQuery(con, "SELECT bs.idrssd, bs.assets, bs.deposits, TRY_CAST(rco.RCONF045 AS DOUBLE) AS f045, TRY_CAST(rco.RCONF049 AS DOUBLE) AS f049 FROM bs_panel bs LEFT JOIN schedule_rco rco ON bs.idrssd=rco.IDRSSD AND bs.activity_year=rco.activity_year AND bs.activity_quarter=rco.activity_quarter WHERE bs.activity_quarter=4 AND bs.activity_year=2024 AND bs.deposits  ORDER BY bs.assets DESC LIMIT 15"))); dbDisconnect(con, shutdown=TRUE)
+=== schedule_rco columns sample ===
+   cid     name    type notnull dflt_value    pk
+1    0   IDRSSD VARCHAR   FALSE       <NA> FALSE
+2    1 RCON0030 VARCHAR   FALSE       <NA> FALSE
+3    2 RCON0031 VARCHAR   FALSE       <NA> FALSE
+4    3 RCON0032 VARCHAR   FALSE       <NA> FALSE
+5    4 RCON2211 VARCHAR   FALSE       <NA> FALSE
+6    5 RCON2229 VARCHAR   FALSE       <NA> FALSE
+7    6 RCON2314 VARCHAR   FALSE       <NA> FALSE
+8    7 RCON2315 VARCHAR   FALSE       <NA> FALSE
+9    8 RCON2351 VARCHAR   FALSE       <NA> FALSE
+10   9 RCON2383 VARCHAR   FALSE       <NA> FALSE
+11  10 RCON2702 VARCHAR   FALSE       <NA> FALSE
+12  11 RCON2710 VARCHAR   FALSE       <NA> FALSE
+13  12 RCON2722 VARCHAR   FALSE       <NA> FALSE
+14  13 RCON3510 VARCHAR   FALSE       <NA> FALSE
+15  14 RCON3512 VARCHAR   FALSE       <NA> FALSE
+16  15 RCON3514 VARCHAR   FALSE       <NA> FALSE
+17  16 RCON3520 VARCHAR   FALSE       <NA> FALSE
+18  17 RCON3779 VARCHAR   FALSE       <NA> FALSE
+19  18 RCON5514 VARCHAR   FALSE       <NA> FALSE
+20  19 RCON5515 VARCHAR   FALSE       <NA> FALSE
+
+=== Q4 2024 sample: bs.deposits, RCONF045, RCONF049 ===
+     idrssd     assets   deposits     f045      f049
+     <char>      <num>      <num>    <num>     <num>
+ 1:  852218 3459261000 2516998000 10052000 788166000
+ 2:  480228 2589060000 2055465000 38447000 854778000
+ 3:  451965 1705538000 1435051000 23017000 660540000
+ 4:  476810 1696818000 1324835000 17570000 179491000
+ 5:  504713  662906418  528517873  2719458 222190239
+ 6: 2182786  561177000  389733000  9474000 192046000
+ 7:  817824  556138962  433565511  3529669 199713971
+ 8:  852320  523132000  402078000  9900000 189459000
+ 9:  112837  487192523  385442165        0 251884828
+10:  497404  372778425  297222261 31784244 147405783
+11:   35301  348989000  266945000        0  16645000
+12:  541101  335955000  291378000  3688000   7664000
+13: 3150447  275425000  231315000 74122000 106423000
+14:   75633  263653406  210560441  2007710  76640120
+15: 1456501  230712000  187093000 19883000 111202000
+> 

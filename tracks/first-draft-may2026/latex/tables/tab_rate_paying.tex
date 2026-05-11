@@ -1,0 +1,26 @@
+   \begin{tabular}{lS[table-format=-1.4]S[table-format=-1.4]S[table-format=-1.4]S[table-format=-1.4]S[table-format=-1.4]S[table-format=-1.4]}
+      \tabularnewline \midrule \midrule
+      Dependent Variable: & \multicolumn{6}{c}{Branch opening (0/1)}\\
+                                 & \multicolumn{1}{c}{>=\$100B (rp)} & \multicolumn{1}{c}{>=\$100B (iea)} & \multicolumn{1}{c}{$10B-$100B (rp)} & \multicolumn{1}{c}{$10B-$100B (iea)} & \multicolumn{1}{c}{$1B-$10B (rp)} & \multicolumn{1}{c}{$1B-$10B (iea)}  \\   
+      Model:                     & (1)            & (2)             & (3)             & (4)                    & (5)            & (6)\\  
+      \midrule
+      \emph{Variables}\\
+      Deposit beta               & 0.0335         & 0.0335          & 0.0230{$^{*}$}    & 0.0230{$^{*}$}           & 0.0180{$^{***}$} & 0.0179{$^{***}$}\\   
+                                 & (0.0217)       & (0.0219)        & (0.0126)        & (0.0126)               & (0.0051)       & (0.0051)\\   
+      1{rate\_paying\_adv > 0}   & -0.0004        &                 & 0.0005          &                        & 0.0003{$^{**}$}     \\   
+                                 & (0.0008)       &                 & (0.0003)        &                        & (0.0001)          \\   
+      1{IEA undercut > 0.5}      &                & 0.0005          &                 & \multicolumn{1}{c}{$-4.92\times 10^{-5}$} &                & 0.0002\\   
+                                 &                & (0.0007)        &                 & (0.0004)               &                & (0.0001)\\   
+      Controls                   & \multicolumn{1}{c}{Yes} & \multicolumn{1}{c}{Yes} & \multicolumn{1}{c}{Yes} & \multicolumn{1}{c}{Yes} & \multicolumn{1}{c}{Yes} & \multicolumn{1}{c}{Yes} \\  
+      \midrule
+      \emph{Fixed-effects}\\
+      Bank-Year                  & \multicolumn{1}{c}{Yes} & \multicolumn{1}{c}{Yes} & \multicolumn{1}{c}{Yes} & \multicolumn{1}{c}{Yes} & \multicolumn{1}{c}{Yes} & \multicolumn{1}{c}{Yes} \\  
+      State-Year                 & \multicolumn{1}{c}{Yes} & \multicolumn{1}{c}{Yes} & \multicolumn{1}{c}{Yes} & \multicolumn{1}{c}{Yes} & \multicolumn{1}{c}{Yes} & \multicolumn{1}{c}{Yes} \\  
+      \midrule
+      \emph{Fit statistics}\\
+      Observations               & \multicolumn{1}{c}{1,151,567} & \multicolumn{1}{c}{1,141,249} & \multicolumn{1}{c}{1,127,414} & \multicolumn{1}{c}{1,121,203} & \multicolumn{1}{c}{2,503,272} & \multicolumn{1}{c}{2,489,185} \\  
+      R$^2$                      & 0.051          & 0.051           & 0.030           & 0.030                  & 0.022          & 0.022\\  
+      \midrule \midrule
+      \multicolumn{7}{l}{\emph{Clustered (Bank \& Zip) standard-errors in parentheses}}\\
+      \multicolumn{7}{l}{\emph{Signif. Codes: ***: 0.01, **: 0.05, *: 0.1}}\\
+   \end{tabular}

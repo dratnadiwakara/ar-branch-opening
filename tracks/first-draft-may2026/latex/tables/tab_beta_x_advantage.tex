@@ -1,0 +1,30 @@
+   \begin{tabular}{lS[table-format=-1.4]S[table-format=-1.4]S[table-format=-1.4]S[table-format=-1.4]S[table-format=-1.4]S[table-format=-1.4]}
+      \tabularnewline \midrule \midrule
+      Dependent Variable: & \multicolumn{6}{c}{Branch opening (0/1)}\\
+                                          & \multicolumn{1}{c}{>=\$100B (rp)} & \multicolumn{1}{c}{>=\$100B (iea)} & \multicolumn{1}{c}{$10B-$100B (rp)} & \multicolumn{1}{c}{$10B-$100B (iea)} & \multicolumn{1}{c}{$1B-$10B (rp)} & \multicolumn{1}{c}{$1B-$10B (iea)}  \\   
+      Model:                              & (1)            & (2)             & (3)             & (4)              & (5)            & (6)\\  
+      \midrule
+      \emph{Variables}\\
+      Deposit beta                        & 0.0192         & 0.0232          & 0.0311{$^{**}$}   & 0.0314{$^{***}$}   & 0.0218{$^{***}$} & 0.0202{$^{***}$}\\   
+                                          & (0.0181)       & (0.0177)        & (0.0124)        & (0.0114)         & (0.0054)       & (0.0055)\\   
+      1{rate\_paying\_adv > 0}            & -0.0057{$^{**}$} &                 & 0.0003          &                  & 0.0004            \\   
+                                          & (0.0027)       &                 & (0.0012)        &                  & (0.0005)          \\   
+      Deposit beta x high\_rate\_paying   & 0.0188{$^{**}$}  &                 & 0.0011          &                  & -0.0005           \\   
+                                          & (0.0075)       &                 & (0.0045)        &                  & (0.0022)          \\   
+      1{IEA undercut > 0.5}               &                & -0.0024         &                 & -0.0003          &                & -0.0003\\   
+                                          &                & (0.0016)        &                 & (0.0011)         &                & (0.0005)\\   
+      Deposit beta x high\_IEA            &                & 0.0098{$^{*}$}    &                 & 0.0009           &                & 0.0021\\   
+                                          &                & (0.0052)        &                 & (0.0047)         &                & (0.0022)\\   
+      Controls                            & \multicolumn{1}{c}{Yes} & \multicolumn{1}{c}{Yes} & \multicolumn{1}{c}{Yes} & \multicolumn{1}{c}{Yes} & \multicolumn{1}{c}{Yes} & \multicolumn{1}{c}{Yes} \\  
+      \midrule
+      \emph{Fixed-effects}\\
+      Bank-Year                           & \multicolumn{1}{c}{Yes} & \multicolumn{1}{c}{Yes} & \multicolumn{1}{c}{Yes} & \multicolumn{1}{c}{Yes} & \multicolumn{1}{c}{Yes} & \multicolumn{1}{c}{Yes} \\  
+      State-Year                          & \multicolumn{1}{c}{Yes} & \multicolumn{1}{c}{Yes} & \multicolumn{1}{c}{Yes} & \multicolumn{1}{c}{Yes} & \multicolumn{1}{c}{Yes} & \multicolumn{1}{c}{Yes} \\  
+      \midrule
+      \emph{Fit statistics}\\
+      Observations                        & \multicolumn{1}{c}{1,141,249} & \multicolumn{1}{c}{1,141,249} & \multicolumn{1}{c}{1,121,203} & \multicolumn{1}{c}{1,121,203} & \multicolumn{1}{c}{2,489,185} & \multicolumn{1}{c}{2,489,185} \\  
+      R$^2$                               & 0.051          & 0.051           & 0.030           & 0.030            & 0.022          & 0.022\\  
+      \midrule \midrule
+      \multicolumn{7}{l}{\emph{Clustered (Bank \& Zip) standard-errors in parentheses}}\\
+      \multicolumn{7}{l}{\emph{Signif. Codes: ***: 0.01, **: 0.05, *: 0.1}}\\
+   \end{tabular}

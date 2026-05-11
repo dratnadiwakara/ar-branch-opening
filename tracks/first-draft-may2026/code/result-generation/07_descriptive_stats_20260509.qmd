@@ -1,0 +1,235 @@
+---
+title: "Descriptive statistics — by size bucket"
+format: html
+execute:
+  warning: false
+  message: false
+type: source
+---
+
+```{r setup}
+rm(list = ls())
+source("tracks/first-draft-may2026/code/common_first_draft.R")
+
+# ---- Toggles ----------------------------------------------------------------
+save_tables <- FALSE
+```
+
+```{r load}
+master_parts <- Sys.glob(file.path(data_dir, "master_bank_zip_year_*_part*.rds"))
+dates        <- regmatches(master_parts, regexpr("\\d{8}", master_parts))
+latest_date  <- max(dates)
+master_parts <- sort(master_parts[dates == latest_date])
+
+dt <- rbindlist(lapply(master_parts, readRDS))
+```
+
+```{r prep}
+# Mirror 06_publishable_tables_20260508.qmd prep verbatim so the descriptive
+# sample matches the regression sample.
+setorder(dt, RSSDID, zip5, yr)
+dt[, n_branches_lag1    := shift(n_branches_bzt,    1L), by = .(RSSDID, zip5)]
+dt[, bank_in_state_lag1 := shift(bank_in_state_bzt, 1L), by = .(RSSDID, zip5)]
+dt[, share_bzt_lag1     := shift(share_bzt,         1L), by = .(RSSDID, zip5)]
+dt[, opening := as.integer(n_branches_bzt > n_branches_lag1)]
+
+dt[, n_large_banks_zip      := sum(n_branches_bzt > 0L), by = .(yr, zip5)]
+dt[, n_large_banks_zip_lag1 := shift(n_large_banks_zip, 1L), by = .(RSSDID, zip5)]
+
+dt[, g_dep_zip_t1_t3 := log1p(dep_zip_total_lag1) - log1p(dep_zip_total_lag3)]
+dt[, g_hmda_t1_t3    := log1p(hmda_amt_lag1)      - log1p(hmda_amt_lag3)]
+dt[, g_cra_t1_t3     := log1p(cra_amt_lag1)       - log1p(cra_amt_lag3)]
+dt[, log_dep_zip_lag1    := log1p(dep_zip_total_lag1)]
+dt[, log_avg_agi_lag1    := log(avg_agi_lag1)]
+dt[, log_n_branches_lag1 := log1p(n_branches_lag1)]
+dt[, hhi_lag1            := deposit_hhi_zip_lag1 / 10000]
+dt[is.na(share_bzt_lag1), share_bzt_lag1 := 0]
+
+# Raw counterparts of the logged controls.  Regressions still use the log
+# versions; descriptive table reports the raw scale to be human-readable.
+# log_pop_density_lag1 was built as log(population_density) (not log1p), so
+# exp() recovers the raw density.
+dt[, pop_density_lag1   := exp(log_pop_density_lag1)]
+dt[, dep_zip_total_lag1_bn := dep_zip_total_lag1 / 1e9]
+
+dt[!is.na(int_exp_assets_share_undercut),
+   high_IEA := as.integer(int_exp_assets_share_undercut > 0.5)]
+dt[!is.na(rate_paying_adv),
+   high_rate_paying := as.integer(rate_paying_adv > 0)]
+
+dt[, size_bucket := assign_bucket(bank_assets)]
+```
+
+```{r filter}
+ar_master <- dt[
+  yr <= 2024L                        &
+  !is.na(size_bucket)                &
+  !is.na(n_branches_lag1)            &
+  !is.na(bank_in_state_lag1)         &
+  !is.na(n_large_banks_zip_lag1)     &
+  !is.na(g_dep_zip_t1_t3)            &
+  !is.na(g_hmda_t1_t3)               &
+  !is.na(g_cra_t1_t3)                &
+  !is.na(log_dep_zip_lag1)           &
+  !is.na(log_avg_agi_lag1)           &
+  !is.na(log_pop_density_lag1)       &
+  !is.na(median_age_lag1)            &
+  !is.na(pct_college_educated_lag1)  &
+  !is.na(hhi_lag1)                   &
+  !is.na(no_bank_zip_lag1)
+]
+```
+
+```{r buckets}
+d_big <- copy(ar_master[size_bucket == "ge_100bn"])
+d_mid <- copy(ar_master[size_bucket == "10_100bn"])
+d_sml <- copy(ar_master[size_bucket == "1_10bn"])
+
+# Same within-yr winsorization as 06.
+for (d in list(d_big, d_mid, d_sml)) {
+  d[, g_dep_zip_t1_t3           := winsor(g_dep_zip_t1_t3),           by = yr]
+  d[, g_hmda_t1_t3              := winsor(g_hmda_t1_t3),              by = yr]
+  d[, g_cra_t1_t3               := winsor(g_cra_t1_t3),               by = yr]
+  d[, median_age_lag1           := winsor(median_age_lag1),           by = yr]
+  d[, pct_college_educated_lag1 := winsor(pct_college_educated_lag1), by = yr]
+  # Winsorize key RHS on the rows where the regression actually uses them
+  # (06 winsors deposit_beta on d_*_b = subset where deposit_beta is finite,
+  # then re-uses that table for cross-sell etc; for descriptive stats we
+  # winsor in place where finite so reported moments line up).
+  d[!is.na(deposit_beta)    & is.finite(deposit_beta),
+    deposit_beta    := winsor(deposit_beta),    by = yr]
+  d[!is.na(rate_paying_adv) & is.finite(rate_paying_adv),
+    rate_paying_adv := winsor(rate_paying_adv), by = yr]
+}
+```
+
+```{r vars}
+# Descriptive table reports raw-scale moments for variables that the
+# regression uses in logs.  Replace the four logged controls in
+# `base_controls` with their raw counterparts here.
+log_to_raw <- c(
+  log_dep_zip_lag1    = "dep_zip_total_lag1_bn",
+  log_avg_agi_lag1    = "avg_agi_lag1",
+  log_pop_density_lag1= "pop_density_lag1",
+  log_n_branches_lag1 = "n_branches_lag1"
+)
+desc_controls <- ifelse(base_controls %in% names(log_to_raw),
+                        log_to_raw[base_controls],
+                        base_controls)
+
+desc_vars_keyrhs <- c(
+  # LHS
+  "opening",
+  # Key RHS — only variables that enter the regressions in 06.
+  # rate_paying_adv enters as the binary `high_rate_paying`; IEA enters as
+  # the binary `high_IEA`; mortgage / CRA enter as `*_presence` indicators.
+  # The continuous `rate_paying_adv`, `int_exp_assets_share_undercut`,
+  # `mortgage_share`, and `cra_share` are not used as regressors and are
+  # therefore omitted.
+  "deposit_beta",
+  "high_rate_paying", "high_IEA",
+  "mortgage_presence", "cra_presence"
+)
+
+# Big bucket gets the full set (LHS + key RHS + controls).  Mid / small
+# buckets show only LHS + key RHS to keep the panel compact.
+desc_vars_big <- c(desc_vars_keyrhs, desc_controls)
+
+# Friendly labels.  var_labels covers most; add any that are missing.
+extra_labels <- c(
+  opening             = "Branch opening (0/1)",
+  high_rate_paying    = "Rate-paying advantage (binary)",
+  high_IEA            = "IEA undercut $> 0.5$ (binary)",
+  mortgage_share      = "Mortgage market share, t-1",
+  cra_share           = "CRA small-biz county share, t-1",
+  dep_zip_total_lag1_bn = "Zip total deposits (\\$B), t-1",
+  avg_agi_lag1        = "Avg AGI (\\$000), t-1",
+  pop_density_lag1    = "Zip pop density (000s per sq km), t-1",
+  n_branches_lag1     = "Bank's branches in zip, t-1"
+)
+label_lookup <- c(extra_labels, var_labels)  # extras win on collision
+get_label <- function(v) {
+  lab <- label_lookup[v]
+  if (is.na(lab) || is.null(lab) || !nzchar(lab)) v else unname(lab)
+}
+```
+
+```{r helpers}
+# One row of summary stats for a single variable in a single data.table.
+desc_stats_one <- function(d, vars) {
+  rows <- lapply(vars, function(v) {
+    if (!v %in% names(d)) return(NULL)
+    x <- d[[v]]
+    x <- x[!is.na(x) & is.finite(x)]
+    if (length(x) == 0L) return(NULL)
+    qs <- quantile(x, probs = c(0.10, 0.50, 0.90), na.rm = TRUE,
+                   names = FALSE, type = 7)
+    data.table(
+      Variable = get_label(v),
+      Mean     = sprintf("%.3f", mean(x)),
+      SD       = sprintf("%.3f", sd(x)),
+      P10      = sprintf("%.3f", qs[1]),
+      Median   = sprintf("%.3f", qs[2]),
+      P90      = sprintf("%.3f", qs[3]),
+      N        = format(length(x), big.mark = ",")
+    )
+  })
+  rbindlist(rows, use.names = TRUE, fill = TRUE)
+}
+
+# Emit a tabular block (no \begin{table} wrapper) + a markdown twin.
+emit_desc_panel <- function(stats_dt, file_stem) {
+  md  <- knitr::kable(stats_dt, format = "pipe", row.names = FALSE,
+                      align = "lrrrrrr")
+  out_md <- file.path(tables_dir, paste0(file_stem, ".md"))
+  writeLines(as.character(md), out_md)
+  cat("Wrote:", out_md, "\n")
+
+  if (isTRUE(save_tables)) {
+    # Build a bare \begin{tabular}...\end{tabular} block by hand so we don't
+    # depend on knitr's booktabs packaging.  Columns: Variable + 6 numeric.
+    header <- "\\begin{tabular}{lrrrrrr}\n\\toprule\n"
+    col_names <- paste(c("Variable", "Mean", "SD", "P10", "Median", "P90", "N"),
+                       collapse = " & ")
+    body_lines <- apply(stats_dt, 1L, function(r) {
+      paste(c(r[["Variable"]], r[["Mean"]], r[["SD"]],
+              r[["P10"]],      r[["Median"]], r[["P90"]],
+              r[["N"]]),
+            collapse = " & ")
+    })
+    body <- paste(paste0(body_lines, " \\\\"), collapse = "\n")
+    tex <- paste0(header,
+                  col_names, " \\\\\n\\midrule\n",
+                  body, "\n",
+                  "\\bottomrule\n\\end{tabular}\n")
+    out_tex <- file.path(tables_dir, paste0(file_stem, ".tex"))
+    writeLines(tex, out_tex)
+    cat("Wrote:", out_tex, "\n")
+  }
+}
+```
+
+```{r emit}
+stats_big <- desc_stats_one(d_big, desc_vars_big)
+stats_mid <- desc_stats_one(d_mid, desc_vars_keyrhs)
+stats_sml <- desc_stats_one(d_sml, desc_vars_keyrhs)
+
+emit_desc_panel(stats_big, "tab_descriptive_stats_big")
+emit_desc_panel(stats_mid, "tab_descriptive_stats_mid")
+emit_desc_panel(stats_sml, "tab_descriptive_stats_sml")
+```
+
+```{r summary}
+# Quick chat summary: bucket sizes + base rate of opening.
+sum_dt <- data.table(
+  Bucket    = c(">=$100B", "$10B-$100B", "$1B-$10B"),
+  N         = c(format(nrow(d_big), big.mark = ","),
+                format(nrow(d_mid), big.mark = ","),
+                format(nrow(d_sml), big.mark = ",")),
+  `Mean(opening)` = sprintf("%.4f",
+                            c(mean(d_big$opening, na.rm = TRUE),
+                              mean(d_mid$opening, na.rm = TRUE),
+                              mean(d_sml$opening, na.rm = TRUE)))
+)
+print(knitr::kable(sum_dt, format = "pipe"))
+```

@@ -1,0 +1,113 @@
+**Cost / efficiency franchise**
+
+|Variable                  |     Low|    High|     Diff|     t| N_low| N_high|
+|:-------------------------|-------:|-------:|--------:|-----:|-----:|------:|
+|Efficiency ratio          |  0.6403|  0.6959|   0.0556|  0.60|     4|      4|
+|Non-int expense / assets  |  0.0244|  0.0637|   0.0393|  1.53|     4|      4|
+|Int expense / assets      |  0.0074|  0.0041| -0.0033*| -2.34|     4|      4|
+|Salaries / assets         |  0.0127|  0.0330|   0.0203|  1.60|     4|      4|
+|Premises expense / assets |  0.0037|  0.0086|   0.0049|  1.47|     4|      4|
+|Assets / employee (\$M)   |  5.3731|  3.5626|  -1.8105| -1.22|     4|      4|
+|Avg compensation (\$K)    | 68.2972| 62.1691|  -6.1281| -0.49|     4|      4|
+|Employees / branch        | 11.1473|  9.3172|  -1.8301| -0.59|     4|      4|
+
+**Fee / cross-sell franchise**
+
+|Variable                           |    Low|   High|    Diff|     t| N_low| N_high|
+|:----------------------------------|------:|------:|-------:|-----:|-----:|------:|
+|Non-int income / revenue           | 0.1982| 0.4661|  0.2680|  1.57|     4|      4|
+|Non-int income / assets            | 0.0082| 0.0524|  0.0442|  1.57|     4|      4|
+|Fiduciary income / revenue         | 0.0054| 0.0265|  0.0211|  1.20|     4|      4|
+|Service charges / revenue          | 0.0647| 0.2056|  0.1409|  1.37|     4|      4|
+|Trading revenue / revenue          | 0.0002| 0.0000| -0.0002| -0.96|     4|      4|
+|Card loans / loans                 | 0.0001| 0.0001|  0.0000|  0.24|     4|      4|
+|Mortgage servicing rights / assets | 0.0009| 0.0003| -0.0006| -0.62|     4|      4|
+|Goodwill / assets                  | 0.0074| 0.0042| -0.0032| -0.46|     4|      4|
+
+**Loan-book + credit quality**
+
+|Variable                      |        Low|      High|       Diff|     t| N_low| N_high|
+|:-----------------------------|----------:|---------:|----------:|-----:|-----:|------:|
+|Loans / assets                |     0.6551|    0.6443|    -0.0109| -0.12|     4|      4|
+|Loan-portfolio HHI            |     0.6764|    0.5671|    -0.1093| -0.80|     4|      4|
+|C\&I loans / loans            |     0.1338|    0.1262|    -0.0076| -0.08|     4|      4|
+|RE loans / loans              |     0.8054|    0.6709|    -0.1345| -1.28|     4|      4|
+|Consumer loans / loans        |     0.0252|    0.1296|     0.1044|  1.45|     4|      4|
+|NPL / loans                   |     0.0079|    0.0087|     0.0009|  0.16|     4|      4|
+|Loan loss reserves / loans    |     0.0141|    0.0129|    -0.0012| -0.66|     4|      4|
+|LLR / NPL (coverage)          | 12332.7137| 9921.7381| -2410.9755| -0.76|     4|      4|
+|Net charge-offs / loans       |     0.0019|    0.0057|     0.0038|  0.95|     4|      4|
+|Loan loss provisions / assets |     0.0012|    0.0032|     0.0019|  1.08|     4|      4|
+
+**Balance sheet**
+
+|Variable                |    Low|   High|    Diff|     t| N_low| N_high|
+|:-----------------------|------:|------:|-------:|-----:|-----:|------:|
+|Cash / assets           | 0.0593| 0.0998|  0.0405|  1.52|     4|      4|
+|Securities / assets     | 0.2246| 0.2085| -0.0161| -0.20|     4|      4|
+|HTM share of securities | 0.1601| 0.1249| -0.0352| -0.35|     4|      4|
+|Trading assets / assets | 0.0005| 0.0000| -0.0004| -1.35|     4|      4|
+
+**Funding mix and rate sensitivity**
+
+|Variable                   |    Low|   High|      Diff|     t| N_low| N_high|
+|:--------------------------|------:|------:|---------:|-----:|-----:|------:|
+|Deposits / assets          | 0.8242| 0.8587|    0.0345|  0.86|     4|      4|
+|Deposit beta               | 0.2475| 0.1779| -0.0696**| -3.32|     4|      3|
+|Uninsured deposits / total | 0.5560| 0.7212|   0.1653*|  2.03|     4|      4|
+|Transaction accts / assets | 0.1916| 0.3495|    0.1579|  1.21|     4|      4|
+|Time deposits / assets     | 0.2442| 0.1125|   -0.1317| -1.53|     4|      4|
+|Demand deposits / deposits | 0.1855| 0.3446|    0.1591|  0.99|     4|      4|
+|MMDA + savings / deposits  | 0.4653| 0.4575|   -0.0078| -0.05|     4|      4|
+|Time deposits / deposits   | 0.2936| 0.1330|   -0.1605| -1.68|     4|      4|
+|Brokered / deposits        | 0.0277| 0.0182|   -0.0095| -0.36|     4|      4|
+|NIB deposits / deposits    | 0.2941| 0.3227|    0.0285|  0.21|     4|      4|
+|Borrowings / assets        | 0.0280| 0.0158|   -0.0122| -0.92|     4|      4|
+
+**Capital and earnings**
+
+|Variable                          |    Low|    High|    Diff|     t| N_low| N_high|
+|:---------------------------------|------:|-------:|-------:|-----:|-----:|------:|
+|Equity / assets                   | 0.1165|  0.0868| -0.0297| -2.09|     4|      4|
+|Tangible equity / tangible assets | 0.1026|  0.0801| -0.0225| -1.92|     4|      4|
+|PPNR / assets                     | 0.0152|  0.0190|  0.0039|  0.93|     4|      4|
+|Net interest income / assets      | 0.0314|  0.0302| -0.0012| -0.38|     4|      4|
+|Securities gains / assets         | 0.0001| -0.0001| -0.0002| -1.65|     4|      4|
+
+**Per-branch productivity**
+
+|Variable                |     Low|    High|     Diff|     t| N_low| N_high|
+|:-----------------------|-------:|-------:|--------:|-----:|-----:|------:|
+|Deposits / branch (\$M) | 48.4888| 28.8734| -19.6154| -1.27|     4|      4|
+|Assets / branch (\$M)   | 59.4895| 34.3473| -25.1422| -1.30|     4|      4|
+|Loans / branch (\$M)    | 38.1600| 24.5922| -13.5678| -1.01|     4|      4|
+
+**Network breadth**
+
+|Variable                                |     Low|   High|    Diff|     t| N_low| N_high|
+|:---------------------------------------|-------:|------:|-------:|-----:|-----:|------:|
+|log(avg \# zips operated)               |  4.4605| 5.4916|  1.0311|  1.66|     4|      3|
+|log(avg \# zips with mortgage presence) |  6.2622| 5.6873| -0.5749| -1.07|     4|      3|
+|log(avg \# zips with CRA presence)      |  6.9267| 7.3803|  0.4536|  0.59|     4|      3|
+|Mortgage zips / branch zips             |  6.7175| 3.0538| -3.6637| -1.36|     4|      3|
+|CRA zips / branch zips                  | 12.9072| 7.9133| -4.9940| -1.32|     4|      3|
+
+**Growth and scale**
+
+|Variable                     |      Low|     High|      Diff|     t| N_low| N_high|
+|:----------------------------|--------:|--------:|---------:|-----:|-----:|------:|
+|ROA                          |   0.0104|   0.0135|    0.0031|  0.96|     4|      4|
+|NIM                          |   0.0309|   0.0299|   -0.0010| -0.33|     4|      4|
+|Asset CAGR 2014-24           |   0.0123|   0.0631|   0.0508*|  2.21|     4|      4|
+|Loan CAGR 2014-24            |   0.0334|   0.0970|    0.0636|  2.10|     4|      4|
+|Deposit CAGR 2014-24         |   0.0137|   0.0673|   0.0535*|  2.38|     4|      4|
+|2024 assets (\$B)            |   6.4451|   7.3766|    0.9314|  0.59|     4|      4|
+|2014 branches                | 144.7500| 335.0000|  190.2500|  1.26|     4|      4|
+|2024 branches                |  82.7500| 335.7500|  253.0000|  1.61|     4|      4|
+|Branches closed 2015-24      |  71.0000|  42.2500|  -28.7500| -1.39|     4|      4|
+|Branches opened 2015-24      |   5.2500|  40.2500|   35.0000|  1.93|     4|      4|
+|Closure rate (closed / 2014) |   0.4743|   0.1809| -0.2934**| -2.86|     4|      4|
+|Opening rate (opened / 2014) |   0.0374|   0.1098|   0.0725*|  2.56|     4|      4|
+|Net branch change rate       |  -0.4080|  -0.0543|  0.3537**|  2.89|     4|      4|
+|Churn (open + close) / 2014  |   0.5120|   0.2925|  -0.2195*| -2.24|     4|      4|
+

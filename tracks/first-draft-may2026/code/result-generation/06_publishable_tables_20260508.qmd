@@ -128,6 +128,68 @@ setFixest_fml(
 ```
 
 ```{r helpers}
+# align_decimals -------------------------------------------------------------
+# Post-process etable() tex output to align coefficients on the decimal point
+# via siunitx S columns. Preamble must load siunitx with:
+#   \usepackage{siunitx}
+#   \sisetup{detect-all, input-symbols={()*},
+#            table-align-text-after=false, table-align-text-before=false}
+align_decimals <- function(tex, n_models, digits = 4) {
+  fmt  <- sprintf("-1.%d", digits)
+  scol <- strrep(sprintf("S[table-format=%s]", fmt), n_models)
+
+  # 0. Keep only the tabular block. results_current.tex wraps \input{} in its
+  #    own \begin{table}, so a second one from etable triggers "Not in outer
+  #    par mode".
+  tab_match <- regmatches(
+    tex,
+    regexpr("(?s)\\\\begin\\{tabular\\}.*?\\\\end\\{tabular\\}", tex, perl = TRUE)
+  )
+  if (length(tab_match) && nzchar(tab_match)) tex <- tab_match
+
+  # 1. {lccc...} -> {lS[..]S[..]...}
+  patt <- paste0("\\{l", strrep("c", n_models), "\\}")
+  tex  <- sub(patt, paste0("{l", scol, "}"), tex, perl = TRUE)
+
+  # 2. Brace-wrap fixest stars so S column treats $^{***}$ as trailing text.
+  tex  <- gsub("(\\$\\^\\{\\*+\\}\\$)", "{\\1}", tex, perl = TRUE)
+
+  # 3. Wrap any non-numeric cell (header OR body) in \multicolumn{1}{c}{...}
+  #    so text headers ("Early-F"), Yes/No FE rows, and math-macro cells
+  #    (e.g. $-7.93\times 10^{-5}$) don't trip the S column parser.
+  lines  <- strsplit(tex, "\n", fixed = TRUE)[[1]]
+  in_tab <- FALSE
+  for (i in seq_along(lines)) {
+    if (grepl("\\\\begin\\{tabular\\}", lines[i])) { in_tab <- TRUE; next }
+    if (grepl("\\\\end\\{tabular\\}", lines[i]))   { in_tab <- FALSE; next }
+    if (!in_tab || !grepl("(?<!\\\\)&", lines[i], perl = TRUE)) next
+    # Skip whole-row \multicolumn{N}{l|c|r}{...} footnote/banner rows.
+    if (grepl("^\\s*\\\\multicolumn\\{\\d+\\}\\{[lcr]\\}", lines[i], perl = TRUE)) next
+
+    raw <- lines[i]
+    m   <- regexpr("\\s*\\\\\\\\\\s*$", raw, perl = TRUE)
+    if (m > 0) {
+      ending <- regmatches(raw, m)
+      body   <- substr(raw, 1, m - 1)
+    } else {
+      ending <- ""; body <- raw
+    }
+    # Split on unescaped & only.
+    cells <- strsplit(body, "(?<!\\\\)&", perl = TRUE)[[1]]
+    if (length(cells) <= 1) next
+    for (j in 2:length(cells)) {
+      v <- trimws(cells[j])
+      if (v == "" || grepl("\\\\multicolumn", v)) next
+      # Skip cells that look numeric / siunitx-friendly. No backslash, no
+      # letters, no thousands-separator commas (siunitx -1.D can't parse those).
+      if (grepl("^[-+0-9.()*$^{}\\s]+$", v, perl = TRUE)) next
+      cells[j] <- sprintf(" \\multicolumn{1}{c}{%s} ", v)
+    }
+    lines[i] <- paste0(paste(cells, collapse = "&"), ending)
+  }
+  paste(lines, collapse = "\n")
+}
+
 # emit_table -----------------------------------------------------------------
 # Display etable in chat; optionally write .tex to tables_dir.
 # keep: NULL  -> show all coefficients (controls visible).
@@ -146,18 +208,20 @@ emit_table <- function(models, headers, file_stem,
                fitstat    = ~ n + r2))
 
   if (isTRUE(save_tables)) {
-    etable(models, headers = headers,
-           keep_raw   = keep,
-           extralines = extra,
-           digits     = 4,
-           digits.stats = 3,
-           fitstat    = ~ n + r2,
-           tex        = TRUE,
-           replace    = TRUE,
-           title      = title,
-           label      = paste0("tab:", file_stem),
-           file       = file.path(tables_dir, paste0(file_stem, ".tex")))
-    cat("Wrote:", file.path(tables_dir, paste0(file_stem, ".tex")), "\n")
+    tex_out <- etable(models, headers = headers,
+                      keep_raw   = keep,
+                      extralines = extra,
+                      digits     = 4,
+                      digits.stats = 3,
+                      fitstat    = ~ n + r2,
+                      tex        = TRUE,
+                      title      = title,
+                      label      = paste0("tab:", file_stem))
+    tex_out  <- paste(as.character(tex_out), collapse = "\n")
+    tex_out  <- align_decimals(tex_out, n_models = length(models), digits = 4)
+    out_path <- file.path(tables_dir, paste0(file_stem, ".tex"))
+    writeLines(tex_out, out_path)
+    cat("Wrote:", out_path, "\n")
   }
 }
 

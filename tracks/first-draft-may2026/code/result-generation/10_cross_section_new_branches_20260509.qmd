@@ -1,0 +1,485 @@
+---
+title: "Cross-section: 2024 new-branch vintage by size bucket"
+format: html
+execute:
+  warning: false
+  message: false
+type: source
+---
+
+```{r setup}
+rm(list = ls())
+source("tracks/first-draft-may2026/code/common_first_draft.R")
+
+suppressPackageStartupMessages({
+  library(DBI)
+  library(duckdb)
+  library(ggplot2)
+  library(scales)
+})
+
+# ---- Toggles ----------------------------------------------------------------
+save_tables <- FALSE  # set TRUE to write .tex fragments to tables_dir
+
+# ---- Window ----------------------------------------------------------------
+yr_anchor   <- 2024L
+yr_lookback <- 10L
+yr_new_min  <- yr_anchor - yr_lookback + 1L  # 2015
+min_total_branches <- 5L
+
+sod_duckdb_path   <- "C:/empirical-data-construction/sod/sod.duckdb"
+ffiec_duckdb_path <- "C:/empirical-data-construction/call-reports-FFIEC/call-reports-ffiec.duckdb"
+```
+
+```{r sod-vintage}
+# Pull full SOD UNINUMBR history; compute first_yr globally; restrict to 2024.
+con <- dbConnect(duckdb::duckdb(), dbdir = sod_duckdb_path, read_only = TRUE)
+
+uninumbr_first <- setDT(dbGetQuery(con, "
+  SELECT UNINUMBR, MIN(YEAR) AS first_yr
+  FROM sod
+  WHERE UNINUMBR IS NOT NULL
+  GROUP BY UNINUMBR
+"))
+
+sod_2024 <- setDT(dbGetQuery(con, sprintf("
+  SELECT RSSDID, UNINUMBR, YEAR, ASSET, ZIPBR, STCNTYBR
+  FROM sod
+  WHERE YEAR = %d
+    AND RSSDID IS NOT NULL
+    AND UNINUMBR IS NOT NULL
+", yr_anchor)))
+
+# Banks present in SOD at start of 10-year window (excludes banks chartered
+# after yr_new_min, whose new_share_b would mechanically be 1.0).
+banks_at_start <- setDT(dbGetQuery(con, sprintf("
+  SELECT DISTINCT RSSDID FROM sod
+  WHERE YEAR = %d AND RSSDID IS NOT NULL
+", yr_new_min - 1L)))
+
+dbDisconnect(con, shutdown = TRUE)
+banks_at_start[, RSSDID := as.character(RSSDID)]
+keep_at_start <- banks_at_start$RSSDID
+
+sod_2024[, RSSDID := as.character(RSSDID)]
+sod_2024 <- merge(sod_2024, uninumbr_first, by = "UNINUMBR", all.x = TRUE)
+sod_2024[, is_new_b := as.integer(first_yr >= yr_new_min)]
+```
+
+```{r bank-level-stock}
+# Bank-level 2024: total branches, new branches, new share, network/scale.
+sod_2024[, zip5  := sprintf("%05.0f", suppressWarnings(as.numeric(ZIPBR)))]
+sod_2024[, state := substr(sprintf("%05.0f", suppressWarnings(as.numeric(STCNTYBR))), 1, 2)]
+
+# Branch HHI across zips (count-based) per bank.
+hhi_b <- sod_2024[, .(br = .N), by = .(RSSDID, zip5)]
+hhi_b[, share := br / sum(br), by = RSSDID]
+hhi_b <- hhi_b[, .(branch_hhi_b = sum(share^2)), by = RSSDID]
+
+bank_lvl <- sod_2024[, .(
+  n_total_2024_b   = .N,
+  n_new_b          = sum(is_new_b, na.rm = TRUE),
+  asset_thousands  = max(as.numeric(ASSET), na.rm = TRUE),
+  n_states_b       = uniqueN(state)
+), by = RSSDID]
+
+bank_lvl[, new_share_b   := n_new_b / pmax(n_total_2024_b, 1)]
+bank_lvl[, bank_assets   := asset_thousands * 1000]
+bank_lvl[, mean_assets_b_bn := bank_assets / 1e9]
+bank_lvl[, size_bucket   := assign_bucket(bank_assets)]
+
+bank_lvl <- merge(bank_lvl, hhi_b, by = "RSSDID", all.x = TRUE)
+
+bank_lvl <- bank_lvl[!is.na(size_bucket) &
+                     n_total_2024_b >= min_total_branches &
+                     RSSDID %in% keep_at_start]
+cat("Banks per bucket (present in", yr_new_min - 1L, "and 2024, >=",
+    min_total_branches, "branches in 2024):\n")
+print(bank_lvl[, .N, by = size_bucket])
+```
+
+```{r call-reports}
+# Q4 2024 snapshot for chars; plus 2015 Q4 for asset CAGR.
+keep_ids <- unique(bank_lvl$RSSDID)
+
+con <- dbConnect(duckdb::duckdb(), dbdir = ffiec_duckdb_path, read_only = TRUE)
+
+bs_sql <- sprintf("
+  SELECT idrssd, activity_year AS yr,
+         assets, qtr_avg_assets, deposits, transaction_dep,
+         td_small, td_mid, td_large, brokered_dep,
+         ln_tot, ln_re, ln_ci, ln_cons,
+         securities, equity
+  FROM bs_panel
+  WHERE activity_quarter = 4
+    AND activity_year IN (%d, %d)
+    AND assets > 0
+", yr_new_min - 1L, yr_anchor)
+bs <- setDT(dbGetQuery(con, bs_sql))
+
+is_sql <- sprintf("
+  SELECT idrssd, activity_year AS yr,
+         ytdint_inc, ytdint_exp, ytdint_inc_net,
+         ytdnonint_inc, ytdnonint_exp,
+         ytdnetinc
+  FROM is_panel
+  WHERE activity_quarter = 4
+    AND activity_year = %d
+", yr_anchor)
+is_ <- setDT(dbGetQuery(con, is_sql))
+
+dbDisconnect(con, shutdown = TRUE)
+
+bs[, idrssd := as.character(idrssd)]
+is_[, idrssd := as.character(idrssd)]
+
+# 2024 snapshot for ratio computations.
+bs24 <- bs[yr == yr_anchor]
+cr   <- merge(bs24, is_, by = c("idrssd", "yr"), all.x = TRUE)
+setnames(cr, "idrssd", "RSSDID")
+cr <- cr[RSSDID %in% keep_ids]
+
+# 2015 -> 2024 asset CAGR.
+bs15 <- bs[yr == yr_new_min - 1L, .(idrssd, asset_2014 = assets)]
+bs24w <- bs[yr == yr_anchor,      .(idrssd, asset_2024 = assets)]
+cagr_dt <- merge(bs15, bs24w, by = "idrssd", all.x = FALSE, all.y = FALSE)
+setnames(cagr_dt, "idrssd", "RSSDID")
+cagr_dt[, asset_cagr := (asset_2024 / asset_2014)^(1 / (yr_anchor - (yr_new_min - 1L))) - 1]
+cagr_dt <- cagr_dt[RSSDID %in% keep_ids, .(RSSDID, asset_cagr)]
+```
+
+```{r ratios}
+cr[, denom_assets := pmax(assets, 1)]
+cr[, denom_qavg   := pmax(qtr_avg_assets, assets, 1)]
+cr[, denom_dep    := pmax(deposits, 1)]
+cr[, denom_loans  := pmax(ln_tot,   1)]
+
+cr[, revenue        := ytdint_inc_net + ytdnonint_inc]
+cr[, time_dep_total := td_small + td_mid + td_large]
+
+cr[, roa                := ytdnetinc      / denom_qavg]
+cr[, nim                := ytdint_inc_net / denom_qavg]
+cr[, eff_ratio          := ifelse(revenue > 0, ytdnonint_exp / revenue, NA_real_)]
+cr[, nonint_exp_assets  := ytdnonint_exp / denom_assets]
+cr[, int_exp_assets     := ytdint_exp    / denom_assets]
+cr[, nonint_inc_revenue := ifelse(revenue > 0, ytdnonint_inc / revenue, NA_real_)]
+cr[, loans_assets       := ln_tot     / denom_assets]
+cr[, sec_assets         := securities / denom_assets]
+cr[, ln_re_share        := ln_re      / denom_loans]
+cr[, ln_ci_share        := ln_ci      / denom_loans]
+cr[, ln_cons_share      := ln_cons    / denom_loans]
+cr[, dep_assets         := deposits   / denom_assets]
+cr[, trans_dep_share    := transaction_dep / denom_dep]
+cr[, time_dep_share     := time_dep_total  / denom_dep]
+cr[, brokered_dep_share := brokered_dep    / denom_dep]
+cr[, rate_sens_dep_share := (time_dep_total + brokered_dep) / denom_dep]
+cr[, equity_assets      := equity / denom_assets]
+
+ratio_cols <- c("roa", "nim", "eff_ratio", "nonint_exp_assets", "int_exp_assets",
+                "nonint_inc_revenue", "loans_assets", "sec_assets",
+                "ln_re_share", "ln_ci_share", "ln_cons_share",
+                "dep_assets", "trans_dep_share", "time_dep_share",
+                "brokered_dep_share", "rate_sens_dep_share", "equity_assets")
+
+cr_b <- cr[, c(.(RSSDID = RSSDID), lapply(.SD, function(x) x)),
+           .SDcols = ratio_cols]
+# Note: cr already one row per RSSDID at Q4 2024.  Use directly.
+cr_b <- cr[, c("RSSDID", ratio_cols), with = FALSE]
+cr_b <- merge(cr_b, cagr_dt, by = "RSSDID", all.x = TRUE)
+```
+
+```{r merge}
+panel <- merge(bank_lvl, cr_b, by = "RSSDID", all.x = TRUE)
+
+label_lookup <- c(
+  roa                 = "ROA",
+  nim                 = "NIM",
+  nonint_inc_revenue  = "Non-int income / revenue",
+  eff_ratio           = "Efficiency ratio",
+  nonint_exp_assets   = "Non-int expense / assets",
+  int_exp_assets      = "Int expense / assets",
+  loans_assets        = "Loans / assets",
+  sec_assets          = "Securities / assets",
+  ln_re_share         = "RE loans / loans",
+  ln_ci_share         = "C\\&I loans / loans",
+  ln_cons_share       = "Consumer loans / loans",
+  dep_assets          = "Deposits / assets",
+  trans_dep_share     = "Transaction / deposits",
+  time_dep_share      = "Time / deposits",
+  brokered_dep_share  = "Brokered / deposits",
+  rate_sens_dep_share = "Rate-sensitive deps / deposits",
+  equity_assets       = "Equity / assets",
+  mean_assets_b_bn    = "2024 assets (\\$B)",
+  n_total_2024_b      = "2024 branches (count)",
+  n_new_b             = "Branches opened 2015-24 (count)",
+  new_share_b         = "Share new (2015-24)",
+  n_states_b          = "States with branches",
+  branch_hhi_b        = "Branch HHI (across zips)",
+  asset_cagr          = "Asset CAGR 2014-24"
+)
+```
+
+```{r helpers}
+`%||%` <- function(a, b) if (is.null(a) || is.na(a) || !nzchar(a)) b else a
+
+winsor_in_place <- function(d, vars, p = c(0.01, 0.99)) {
+  for (v in vars) {
+    x <- d[[v]]
+    if (!is.numeric(x)) next
+    set(d, j = v, value = winsor(x, p = p))
+  }
+  d
+}
+
+build_panel <- function(d, vars) {
+  med <- median(d$new_share_b, na.rm = TRUE)
+  d[, high_opener := as.integer(new_share_b >= med)]
+
+  rows <- lapply(vars, function(v) {
+    x_low  <- d[high_opener == 0L, get(v)]; x_low  <- x_low[is.finite(x_low)]
+    x_high <- d[high_opener == 1L, get(v)]; x_high <- x_high[is.finite(x_high)]
+    if (length(x_low) < 2 || length(x_high) < 2) {
+      return(data.table(
+        Variable = label_lookup[v] %||% v,
+        Low      = "",
+        High     = "",
+        Diff     = "",
+        t        = "",
+        N_low    = format(length(x_low),  big.mark = ","),
+        N_high   = format(length(x_high), big.mark = ",")
+      ))
+    }
+    tt <- tryCatch(t.test(x_high, x_low), error = function(e) NULL)
+    diff <- mean(x_high) - mean(x_low)
+    sig  <- if (!is.null(tt)) {
+      if (tt$p.value < 0.01) "***"
+      else if (tt$p.value < 0.05) "**"
+      else if (tt$p.value < 0.10) "*"
+      else ""
+    } else ""
+
+    data.table(
+      Variable = label_lookup[v] %||% v,
+      Low      = sprintf("%.3f", mean(x_low)),
+      High     = sprintf("%.3f", mean(x_high)),
+      Diff     = sprintf("%.3f%s", diff, sig),
+      t        = if (!is.null(tt)) sprintf("%.2f", tt$statistic) else "",
+      N_low    = format(length(x_low),  big.mark = ","),
+      N_high   = format(length(x_high), big.mark = ",")
+    )
+  })
+  rbindlist(rows, use.names = TRUE, fill = TRUE)
+}
+
+emit_panel <- function(stats_dt, file_stem) {
+  out_md <- file.path(tables_dir, paste0(file_stem, ".md"))
+  md <- knitr::kable(stats_dt, format = "pipe", row.names = FALSE,
+                     align = "lrrrrrr")
+  writeLines(as.character(md), out_md)
+  cat("Wrote:", out_md, "\n")
+
+  if (isTRUE(save_tables)) {
+    header <- "\\begin{tabular}{lrrrrrr}\n\\toprule\n"
+    col_names <- paste(c("Variable", "Low", "High", "Diff", "$t$",
+                         "$N_{\\text{low}}$", "$N_{\\text{high}}$"),
+                       collapse = " & ")
+    body_lines <- apply(stats_dt, 1L, function(r) {
+      paste(c(r[["Variable"]], r[["Low"]], r[["High"]], r[["Diff"]],
+              r[["t"]],        r[["N_low"]], r[["N_high"]]),
+            collapse = " & ")
+    })
+    body <- paste(paste0(body_lines, " \\\\"), collapse = "\n")
+    tex <- paste0(header,
+                  col_names, " \\\\\n\\midrule\n",
+                  body, "\n",
+                  "\\bottomrule\n\\end{tabular}\n")
+    out_tex <- file.path(tables_dir, paste0(file_stem, ".tex"))
+    writeLines(tex, out_tex)
+    cat("Wrote:", out_tex, "\n")
+  }
+}
+```
+
+```{r per-bucket}
+display_vars <- c(
+  # --- Lending franchise (story-block 1) -----------------------------------
+  "loans_assets", "ln_re_share", "ln_ci_share", "ln_cons_share",
+  # --- Balance-sheet alternative (large-bank tilt) -------------------------
+  "sec_assets",
+  # --- Funding rate-sensitivity (story-block 2) ----------------------------
+  "int_exp_assets", "time_dep_share", "brokered_dep_share",
+  "trans_dep_share", "dep_assets",
+  # --- Fee income (large-bank tilt) ----------------------------------------
+  "nonint_inc_revenue",
+  # --- Profitability / cost ------------------------------------------------
+  "roa", "nim", "eff_ratio", "nonint_exp_assets",
+  # --- Capital -------------------------------------------------------------
+  "equity_assets",
+  # --- Scale / network / growth -------------------------------------------
+  "mean_assets_b_bn", "n_total_2024_b", "n_states_b", "branch_hhi_b",
+  "asset_cagr",
+  # --- Vintage stats (context) ---------------------------------------------
+  "n_new_b", "new_share_b"
+)
+
+# Don't winsorize integer counts; do winsorize all the ratios + share + cagr.
+winsor_vars <- setdiff(display_vars,
+                       c("n_states_b", "n_total_2024_b", "n_new_b"))
+
+panel_big <- copy(panel[size_bucket == "ge_100bn"])
+panel_mid <- copy(panel[size_bucket == "10_100bn"])
+panel_sml <- copy(panel[size_bucket == "1_10bn"])
+
+panel_big <- winsor_in_place(panel_big, winsor_vars)
+panel_mid <- winsor_in_place(panel_mid, winsor_vars)
+panel_sml <- winsor_in_place(panel_sml, winsor_vars)
+
+stats_big <- build_panel(panel_big, display_vars)
+stats_mid <- build_panel(panel_mid, display_vars)
+stats_sml <- build_panel(panel_sml, display_vars)
+
+emit_panel(stats_big, "tab_cross_section_new_branches_big")
+emit_panel(stats_mid, "tab_cross_section_new_branches_mid")
+emit_panel(stats_sml, "tab_cross_section_new_branches_sml")
+```
+
+```{r combined-md}
+combined <- c(
+  "## Panel A: Banks with 2024 assets >= $100B", "",
+  knitr::kable(stats_big, format = "pipe", row.names = FALSE, align = "lrrrrrr"),
+  "",
+  "## Panel B: Banks with 2024 assets $10B-$100B", "",
+  knitr::kable(stats_mid, format = "pipe", row.names = FALSE, align = "lrrrrrr"),
+  "",
+  "## Panel C: Banks with 2024 assets $1B-$10B", "",
+  knitr::kable(stats_sml, format = "pipe", row.names = FALSE, align = "lrrrrrr")
+)
+out_md <- file.path(tables_dir, "tab_cross_section_new_branches.md")
+writeLines(as.character(combined), out_md)
+cat("Wrote:", out_md, "\n")
+```
+
+```{r story-table}
+# Curated 7-variable table that contrasts the lending/funding tilt of small &
+# mid high-vintage banks vs the fee/securities tilt of large high-vintage
+# banks.  One row per variable; six numeric columns (Low / High per bucket)
+# with significance stars on the High cell when the within-bucket Welch t-test
+# rejects equality.
+
+story_vars <- c(
+  "loans_assets",         # lending franchise
+  "ln_re_share",          # lending franchise
+  "sec_assets",           # alternative balance sheet
+  "int_exp_assets",       # rate sensitivity (cost)
+  "rate_sens_dep_share",  # rate sensitivity (mix)
+  "nonint_inc_revenue",   # fee income (large-bank channel)
+  "asset_cagr"            # growth
+)
+
+story_cell <- function(d, v, side) {
+  med  <- median(d$new_share_b, na.rm = TRUE)
+  flag <- d$new_share_b >= med
+  x_low  <- d[!flag, get(v)];  x_low  <- x_low[is.finite(x_low)]
+  x_high <- d[ flag, get(v)];  x_high <- x_high[is.finite(x_high)]
+  if (length(x_low) < 2 || length(x_high) < 2) return("")
+  if (side == "low")  return(sprintf("%.3f", mean(x_low)))
+  tt <- tryCatch(t.test(x_high, x_low), error = function(e) NULL)
+  sig <- if (!is.null(tt)) {
+    if (tt$p.value < 0.01) "***"
+    else if (tt$p.value < 0.05) "**"
+    else if (tt$p.value < 0.10) "*"
+    else ""
+  } else ""
+  sprintf("%.3f%s", mean(x_high), sig)
+}
+
+story_dt <- data.table(
+  Variable = vapply(story_vars, function(v) label_lookup[v] %||% v, character(1)),
+  `Big Low`  = vapply(story_vars, function(v) story_cell(panel_big, v, "low"),  character(1)),
+  `Big High` = vapply(story_vars, function(v) story_cell(panel_big, v, "high"), character(1)),
+  `Mid Low`  = vapply(story_vars, function(v) story_cell(panel_mid, v, "low"),  character(1)),
+  `Mid High` = vapply(story_vars, function(v) story_cell(panel_mid, v, "high"), character(1)),
+  `Sml Low`  = vapply(story_vars, function(v) story_cell(panel_sml, v, "low"),  character(1)),
+  `Sml High` = vapply(story_vars, function(v) story_cell(panel_sml, v, "high"), character(1))
+)
+
+out_md <- file.path(tables_dir, "tab_new_branches_story.md")
+writeLines(as.character(knitr::kable(story_dt, format = "pipe", row.names = FALSE,
+                                     align = "lrrrrrr")), out_md)
+cat("Wrote:", out_md, "\n")
+
+if (isTRUE(save_tables)) {
+  header <- paste0("\\begin{tabular}{lrrrrrr}\n\\toprule\n",
+                   " & \\multicolumn{2}{c}{$\\geq$\\$100B}",
+                   " & \\multicolumn{2}{c}{\\$10B--\\$100B}",
+                   " & \\multicolumn{2}{c}{\\$1B--\\$10B} \\\\\n",
+                   "\\cmidrule(lr){2-3}\\cmidrule(lr){4-5}\\cmidrule(lr){6-7}\n",
+                   "Variable & Low & High & Low & High & Low & High \\\\\n",
+                   "\\midrule\n")
+  body_lines <- apply(story_dt, 1L, function(r)
+    paste(c(r[["Variable"]], r[["Big Low"]], r[["Big High"]],
+            r[["Mid Low"]],  r[["Mid High"]], r[["Sml Low"]], r[["Sml High"]]),
+          collapse = " & "))
+  body <- paste(paste0(body_lines, " \\\\"), collapse = "\n")
+  tex  <- paste0(header, body, "\n\\bottomrule\n\\end{tabular}\n")
+  out_tex <- file.path(tables_dir, "tab_new_branches_story.tex")
+  writeLines(tex, out_tex)
+  cat("Wrote:", out_tex, "\n")
+}
+
+print(knitr::kable(story_dt, format = "pipe"))
+```
+
+```{r density-figure}
+# Density of share-of-2024-branches-opened-2015-2024, three panels by size.
+bucket_levels <- c("ge_100bn", "10_100bn", "1_10bn")
+bucket_label_short <- c(ge_100bn = ">=$100B",
+                        `10_100bn` = "$10B-$100B",
+                        `1_10bn`   = "$1B-$10B")
+
+dens_dt <- panel[, .(RSSDID, size_bucket, new_share_b)][!is.na(new_share_b)]
+dens_dt[, bucket := factor(bucket_label_short[size_bucket],
+                           levels = unname(bucket_label_short))]
+
+med_dt <- dens_dt[, .(med = median(new_share_b, na.rm = TRUE),
+                      mn  = mean(new_share_b,   na.rm = TRUE)),
+                  by = bucket]
+
+p_dens <- ggplot(dens_dt, aes(x = new_share_b)) +
+  geom_density(fill = primary_blue, color = primary_blue, alpha = 0.30,
+               linewidth = 0.6) +
+  geom_vline(data = med_dt, aes(xintercept = med),
+             color = primary_gold, linetype = "dashed", linewidth = 0.6) +
+  facet_wrap(~ bucket, scales = "free_y", nrow = 1) +
+  scale_x_continuous(labels = scales::percent_format(accuracy = 1),
+                     limits = c(0, 1), expand = c(0, 0)) +
+  labs(x = "Share of 2024 branches opened 2015-2024",
+       y = "Density", title = NULL) +
+  theme_custom() +
+  theme(legend.position = "none")
+
+if (isTRUE(save_figures)) {
+  out_png <- file.path(figures_dir, "fig_new_share_density.png")
+  ggsave(out_png, plot = p_dens, width = 10, height = 3.5,
+         dpi = 300, bg = "white")
+  cat("Wrote:", out_png, "\n")
+}
+```
+
+```{r summary}
+summary_dt <- rbind(
+  panel_big[, .(Bucket = ">=$100B",   N = .N,
+                med_share = sprintf("%.3f", median(new_share_b, na.rm = TRUE)),
+                p90_share = sprintf("%.3f", quantile(new_share_b, 0.9, na.rm = TRUE)),
+                med_total = sprintf("%.0f", median(n_total_2024_b, na.rm = TRUE)))],
+  panel_mid[, .(Bucket = "$10B-$100B", N = .N,
+                med_share = sprintf("%.3f", median(new_share_b, na.rm = TRUE)),
+                p90_share = sprintf("%.3f", quantile(new_share_b, 0.9, na.rm = TRUE)),
+                med_total = sprintf("%.0f", median(n_total_2024_b, na.rm = TRUE)))],
+  panel_sml[, .(Bucket = "$1B-$10B",   N = .N,
+                med_share = sprintf("%.3f", median(new_share_b, na.rm = TRUE)),
+                p90_share = sprintf("%.3f", quantile(new_share_b, 0.9, na.rm = TRUE)),
+                med_total = sprintf("%.0f", median(n_total_2024_b, na.rm = TRUE)))]
+)
+print(knitr::kable(summary_dt, format = "pipe"))
+```
