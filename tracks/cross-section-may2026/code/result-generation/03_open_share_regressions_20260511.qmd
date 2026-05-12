@@ -1,0 +1,217 @@
+---
+title: "Opening share of churn regressed on bank characteristics"
+format: html
+type: source
+execute:
+  warning: false
+  message: false
+---
+
+```{r setup}
+rm(list = ls())
+
+library(data.table)
+library(fixest)
+library(here)
+library(knitr)
+
+track        <- "cross-section-may2026"
+tables_path  <- here("tracks", track, "latex", "tables")
+dir.create(tables_path, recursive = TRUE, showWarnings = FALSE)
+
+# Source: tracks/cross-section-may2026/data/cohort_2014_YYYYMMDD.rds
+# Built by: tracks/cross-section-may2026/code/sample-construction/01_build_bank_dataset_20260511.R
+# Contents: 80 banks (>=100 brick-and-mortar branches in 2014), open_share +
+#   Call Report 2014-Q4 vars + SOD-derived geography.
+data_dir <- here("tracks", track, "data")
+rds_file <- list.files(data_dir, pattern = "^cohort_2014_\\d{8}\\.rds$",
+                       full.names = TRUE) |> sort() |> tail(1)
+cat("Loading: ", rds_file, "\n", sep = "")
+dt <- as.data.table(readRDS(rds_file))
+
+dt <- dt[!is.na(open_share)]
+cat("N with valid open_share: ", nrow(dt), "\n", sep = "")
+```
+
+```{r var-list}
+vars <- c(
+  log_assets         = "log(Assets)",
+  log_deposits       = "log(Deposits)",
+  log_branches       = "log(Branches 2014)",
+  equity_assets      = "Equity / Assets",
+  roa                = "ROA",
+  nim                = "NIM",
+  eff_ratio          = "Efficiency Ratio",
+  nonint_exp_assets  = "Noninterest Exp / Assets",
+  premises_assets    = "Premises / Assets",
+  loans_assets       = "Loans / Assets",
+  securities_assets  = "Securities / Assets",
+  cash_assets        = "Cash / Assets",
+  re_share           = "RE Loans / Loans",
+  ci_share           = "C\\&I Loans / Loans",
+  cons_share         = "Consumer Loans / Loans",
+  cc_share           = "Credit Card Loans / Loans",
+  llres_loans        = "Allowance / Loans",
+  net_chargeoffs_loans = "Net Charge-offs / Loans",
+  deposits_assets    = "Deposits / Assets",
+  nib_share          = "Noninterest-Bearing Dep Share",
+  brokered_share     = "Brokered Dep / Deposits",
+  log_dep_per_branch = "log(Deposits / Branch)",
+  branch_geo_hhi     = "Own-Deposit Geographic HHI",
+  avg_local_hhi      = "Avg County Deposit HHI",
+  n_counties         = "Counties Operated",
+  n_states           = "States Operated",
+  log_employees      = "log(Employees)",
+  assets_per_employee = "Assets / Employee"
+)
+
+# Standardize each RHS variable (z-score) so coefficients are
+# "change in open_share per 1 SD increase in X".
+for (v in names(vars)) {
+  z_col <- paste0(v, "_z")
+  x <- dt[[v]]
+  dt[, (z_col) := (x - mean(x, na.rm = TRUE)) / sd(x, na.rm = TRUE)]
+}
+```
+
+```{r univariate-scan}
+fit_one <- function(v) {
+  z <- paste0(v, "_z")
+  m <- feols(as.formula(paste("open_share ~", z)), data = dt)
+  s <- summary(m)
+  cf <- s$coeftable
+  data.table(
+    var  = v,
+    beta = cf[2, 1],
+    se   = cf[2, 2],
+    t    = cf[2, 3],
+    p    = cf[2, 4],
+    r2   = fitstat(m, "r2", verbose = FALSE)$r2,
+    n    = nobs(m)
+  )
+}
+
+uni <- rbindlist(lapply(names(vars), fit_one))
+uni[, label := vars[var]]
+setorder(uni, p)
+uni
+```
+
+```{r univariate-table}
+stars <- function(p) ifelse(is.na(p), "",
+                     ifelse(p < 0.01, "***",
+                     ifelse(p < 0.05, "**",
+                     ifelse(p < 0.10, "*", ""))))
+fmt <- function(x, d) formatC(x, format = "f", digits = d)
+
+out_uni <- uni[, .(
+  Variable = label,
+  beta = paste0(fmt(beta, 4), stars(p)),
+  SE   = fmt(se, 4),
+  t    = fmt(t, 2),
+  p    = fmt(p, 3),
+  R2   = fmt(r2, 3)
+)]
+setnames(out_uni, "beta", "$\\beta$ (1 SD)")
+
+md <- kable(out_uni, format = "pipe", row.names = FALSE, align = "lrrrrr")
+writeLines(as.character(md),
+           file.path(tables_path, "tab_open_share_univariate.md"))
+
+tex <- kable(out_uni, format = "latex", booktabs = TRUE, row.names = FALSE,
+             align = "lrrrrr", escape = FALSE, linesep = "")
+writeLines(as.character(tex),
+           file.path(tables_path, "tab_open_share_univariate.tex"))
+
+cat("Wrote:\n  ",
+    file.path(tables_path, "tab_open_share_univariate.md"), "\n  ",
+    file.path(tables_path, "tab_open_share_univariate.tex"), "\n")
+```
+
+```{r multivariate}
+# Parsimonious set: drop near-duplicates (log_assets vs log_deposits vs log_branches),
+# keep one size proxy. Drop sample-redundant geography (n_states ~ n_counties).
+# All RHS standardized.
+m_full <- feols(open_share ~ log_assets_z + equity_assets_z + roa_z +
+                  premises_assets_z + loans_assets_z + securities_assets_z +
+                  re_share_z + ci_share_z + cc_share_z +
+                  nib_share_z + brokered_share_z +
+                  net_chargeoffs_loans_z +
+                  avg_local_hhi_z + log_dep_per_branch_z,
+                data = dt)
+
+m_small <- feols(open_share ~ log_assets_z + roa_z + premises_assets_z +
+                   re_share_z + cc_share_z + nib_share_z +
+                   avg_local_hhi_z + log_dep_per_branch_z,
+                 data = dt)
+
+et <- etable(m_small, m_full,
+             headers = c("Parsimonious", "Full"),
+             dict = c(
+               log_assets_z         = "log(Assets)",
+               equity_assets_z      = "Equity/Assets",
+               roa_z                = "ROA",
+               premises_assets_z    = "Premises/Assets",
+               loans_assets_z       = "Loans/Assets",
+               securities_assets_z  = "Securities/Assets",
+               re_share_z           = "RE Share",
+               ci_share_z           = "C\\&I Share",
+               cc_share_z           = "Credit Card Share",
+               nib_share_z          = "NIB Dep Share",
+               brokered_share_z     = "Brokered Dep Share",
+               net_chargeoffs_loans_z = "Net Charge-offs/Loans",
+               avg_local_hhi_z      = "Avg County HHI",
+               log_dep_per_branch_z = "log(Dep/Branch)"
+             ),
+             digits = 3,
+             tex    = FALSE)
+
+# Markdown version
+df <- as.data.frame(et, stringsAsFactors = FALSE)
+rownames(df) <- NULL
+md2 <- kable(df, format = "pipe", row.names = FALSE)
+writeLines(as.character(md2),
+           file.path(tables_path, "tab_open_share_multivariate.md"))
+
+# TeX (tabular only)
+tex_out <- etable(m_small, m_full,
+                  headers = c("Parsimonious", "Full"),
+                  dict = c(
+                    log_assets_z         = "log(Assets)",
+                    equity_assets_z      = "Equity/Assets",
+                    roa_z                = "ROA",
+                    premises_assets_z    = "Premises/Assets",
+                    loans_assets_z       = "Loans/Assets",
+                    securities_assets_z  = "Securities/Assets",
+                    re_share_z           = "RE Share",
+                    ci_share_z           = "C\\&I Share",
+                    cc_share_z           = "Credit Card Share",
+                    nib_share_z          = "NIB Dep Share",
+                    brokered_share_z     = "Brokered Dep Share",
+                    net_chargeoffs_loans_z = "Net Charge-offs/Loans",
+                    avg_local_hhi_z      = "Avg County HHI",
+                    log_dep_per_branch_z = "log(Dep/Branch)"
+                  ),
+                  digits = 3,
+                  tex = TRUE,
+                  style.tex = style.tex("base"))
+writeLines(as.character(tex_out),
+           file.path(tables_path, "tab_open_share_multivariate.tex"))
+
+cat("Wrote:\n  ",
+    file.path(tables_path, "tab_open_share_multivariate.md"), "\n  ",
+    file.path(tables_path, "tab_open_share_multivariate.tex"), "\n")
+```
+
+```{r key-summary}
+# Univariate key-coefficient summary
+sig_rows <- uni[p < 0.10][order(p)]
+cat("Univariate hits (p < 0.10):\n")
+print(sig_rows[, .(label, beta = round(beta, 4), t = round(t, 2),
+                   p = round(p, 3), R2 = round(r2, 3))])
+
+cat("\nMultivariate parsimonious R^2 = ",
+    round(fitstat(m_small, "r2", verbose = FALSE)$r2, 3), "\n", sep = "")
+cat("Multivariate full R^2         = ",
+    round(fitstat(m_full,  "r2", verbose = FALSE)$r2, 3), "\n", sep = "")
+```

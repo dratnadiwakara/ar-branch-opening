@@ -66,3 +66,36 @@
 - Pick which cross-section to lead with in the paper's setup section: `13_*` (franchise, broad) or `14_*` (closer-vs-opener, sharper signal in mid bucket). Closer-vs-opener has cleaner story but requires reframing.
 - Consider rebuilding `12_*` seminar figure on the n=68 sample with closer-vs-opener axes (e.g., scatter of close_rate x open_rate, color = ROA).
 - Decide treatment of small-bucket (n=6-8) results — too thin for any robust comparison; either drop the panel or report as descriptive moments only.
+
+## 2026-05-12
+
+### Done
+- Drafted `latex/sections/data/data_current.tex` end-to-end. Final form: two subsections in one file --- `Data Sources and Sample Construction` (sample, channels, controls, no distributional content) + `Descriptive Statistics` (means/SDs/frequencies, anchored to `tab:descriptive_stats`). Cites `narayanan2025decline` and `[DSS2017]` placeholder.
+- Drafted `latex/sections/identification/identification_current.tex`. Single equation (`eq:main`) for LPM with bank-year + state-year FE, two-way clustering at bank+ZIP. Four threats addressed inline (reverse causality, candidate-set conditioning, imputed-beta measurement error, market-specific plans).
+- Drafted `latex/sections/results/results_current.tex`. Final structure: opening paragraph that frames the high-β-entry finding as a *replication* of `narayanan2025decline` + poses the puzzle ("why open where deposit margin is thinner?"), then two subsections (`Efficiency Edge`, `Cross-Sell Presence`) that test the conjecture via deposit-beta × channel interactions. Closes by reading interactions back against the puzzle. Coefficients quoted as pp on bucket-specific mean opening rate with within-bucket β SD as anchor.
+- Heavily revised `.claude/commands/skills/write-section.md` to encode session lessons (see Lessons below).
+- Wrote six feedback-memory files under `.claude/projects/.../memory/` documenting style/structure rules surfaced during this session.
+
+### Dead ends
+- `latexmk -pdf` halts on bibtex failure and refuses to retry until `build/main.*` is cleared. With `DSS2017` unresolved, latexmk consistently abandons the run mid-pipeline. Workaround that worked: `rm -f build/main.* && pdflatex ... && bibtex build/main && pdflatex ... && pdflatex ...` directly (three pdflatex passes, no latexmk).
+- Initial data section was "code transcription" --- variable-by-variable recital with HUD-crosswalk and Avery-linkage mechanics, distributional content (means/SDs/frequencies), and inlined `\begin{figure}` blocks duplicating floats that already lived in `tables_figures.tex`. Required four iterative rewrites before user-acceptance. Lessons codified in skill and memory.
+- Initial results section made "Banks open in high-β markets" a headline subsection. Was a replication of `narayanan2025decline`. User pushed back: replication content gets a single-paragraph setup, not a subsection.
+
+### Lessons
+- **Float ownership is exclusive** and lives in `latex/tables_figures.tex` (CLAUDE.md was updated mid-session to formalize this). Body sections (`data`, `identification`, `results`, etc.) are **prose only** and reference floats by `\ref{}`. Inlining `\begin{figure}` or `\begin{table}` in a body section duplicates the float and breaks the audit trail.
+- Because `tables_figures.tex` is `\input`-ed **after** `\bibliography{main}`, every `\ref{fig:..}` / `\ref{tab:..}` in body prose needs **three pdflatex passes** to resolve (first pass writes the body, second writes the floats' aux entries after the bibliography, third reads them back for body refs).
+- `data_current.tex` always emits **two subsections** in one file: `Data Sources and Sample Construction` (variables + sample, no distributions) followed by `Descriptive Statistics` (means/SDs/freqs + summary-stats table ref). The skill's argument grammar uses `||` to split free-text instructions between the two: `/write-section data <instr-for-sub1> || <instr-for-sub2>`. Empty slot = no extra guidance.
+- Reader-objective-first: empirical sections open with the question being served and what the data/identification must deliver, then build construction as means to that end. **Not** "Variable X is defined as A/B from source C".
+- Skip standard data machinery (HUD crosswalks, Avery/LEI--RSSDID linkage, efficiency-ratio definition, CRA loan-size cutoffs, ACS/IRS forward-fill outside the analysis window, routine RIAD codes). JF/RFS readers fill these in. Non-obvious choices (OTS-2011 exclusion, self-exclusion in incumbent benchmarks, cycle-period beta assignment) DO get explained.
+- No `\paragraph{}` headings, no `\textbf{Foo.}` lead-ins. Default zero or one `\subsection{}` per section. Empirical Results is the exception (two channel-by-channel subsections were appropriate here).
+- Replications of cited prior work get a one-paragraph setup that turns the replication into a puzzle, not a headline subsection. The contribution gets the structural weight.
+- Sample period stated in body should be the analysis-usable window (2012--2026 here, accounting for $t-3$ lag on growth controls), not the raw panel range (2009--2026).
+- `narayanan2025decline` is the only bib entry currently in `main.bib`. `DSS2017` cite in `data_current.tex` line 14 still renders as `[?]`; user has not yet provided that bib entry. `apalike.bst` is the active style.
+- The skill's `Subsection 2: Descriptive Statistics` block is also the home for the summary-stats table reference; do not duplicate that reference in subsection 1.
+- 85-90% candidate-set coverage figure in `data_current.tex` (paragraph 2) is **asserted, not yet code-confirmed**. Verify with a quick script before circulation: count of SOD de novo openings inside vs outside the candidate-set union over 2012-2024.
+
+### Next
+- Add `DSS2017` (Drechsler--Savov--Schnabl 2017 deposits-channel) entry to `latex/main.bib`, then rename `\citet{DSS2017}` → `\citet{drechsler2017deposits}` in `data_current.tex:14`.
+- Verify 85-90% candidate-set claim with a script; adjust the data-section sentence if it lands outside that range.
+- Draft remaining sections: `intro`, `institutional-background`, `conclusion`. The `results` section is sized for full main-body submission; intro+conclusion are still placeholders in `main.tex` (commented `\input{}` lines).
+- Heterogeneity / robustness sections are also un-drafted (and the cross-section descriptives from `13_*` / `14_*` are not yet `\input`-ed anywhere).

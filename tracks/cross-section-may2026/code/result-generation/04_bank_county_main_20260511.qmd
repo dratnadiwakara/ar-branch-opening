@@ -1,0 +1,250 @@
+---
+title: "Bank-county openings: main regressions"
+format: html
+type: source
+execute:
+  warning: false
+  message: false
+---
+
+```{r setup}
+rm(list = ls())
+
+library(data.table)
+library(fixest)
+library(here)
+library(knitr)
+
+track       <- "cross-section-may2026"
+tables_path <- here("tracks", track, "latex", "tables")
+dir.create(tables_path, recursive = TRUE, showWarnings = FALSE)
+
+# Source: tracks/cross-section-may2026/data/bank_county_2014_YYYYMMDD.rds
+# Built by: tracks/cross-section-may2026/code/sample-construction/02_build_bank_county_panel_20260511.R
+# Contents: 8450 (RSSDID, county_fips) cells — 80 cohort banks × within-footprint
+#   counties. Columns: branches_2014, bank_dep_2014_k, openings, closures,
+#   county_dep_2014_k, county_hhi_2014, deposit_share_2014, opening_intensity,
+#   open_share_bc, etc.
+# Source: tracks/cross-section-may2026/data/cohort_2014_YYYYMMDD.rds
+# Built by: tracks/cross-section-may2026/code/sample-construction/01_build_bank_dataset_20260511.R
+# Contents: bank-level covariates from Call Reports 2014-Q4.
+data_dir <- here("tracks", track, "data")
+bc_file   <- list.files(data_dir, pattern = "^bank_county_2014_\\d{8}\\.rds$",
+                        full.names = TRUE) |> sort() |> tail(1)
+bank_file <- list.files(data_dir, pattern = "^cohort_2014_\\d{8}\\.rds$",
+                        full.names = TRUE) |> sort() |> tail(1)
+cat("Loading: ", bc_file, "\n         ", bank_file, "\n", sep = "")
+
+bc   <- as.data.table(readRDS(bc_file))
+bank <- as.data.table(readRDS(bank_file))
+
+# Bring in selected bank-level vars (only those informative at bank level)
+bank_keep <- bank[, .(RSSDID, log_assets, roa, premises_assets,
+                      loans_assets, nib_share, eff_ratio)]
+dt <- merge(bc, bank_keep, by = "RSSDID", all.x = TRUE)
+
+# State (for state FE)
+dt[, state := substr(county_fips, 1, 2)]
+
+cat("Rows: ", nrow(dt),
+    " | banks: ", uniqueN(dt$RSSDID),
+    " | counties: ", uniqueN(dt$county_fips),
+    " | states: ", uniqueN(dt$state), "\n", sep = "")
+```
+
+```{r descriptives}
+# Quick LHS distribution
+cat("openings  -> mean: ", round(mean(dt$openings), 2),
+    " | median: ", median(dt$openings),
+    " | max: ", max(dt$openings),
+    " | share(==0): ", round(mean(dt$openings == 0), 3), "\n", sep = "")
+cat("closures  -> mean: ", round(mean(dt$closures), 2),
+    " | median: ", median(dt$closures), "\n", sep = "")
+cat("opening_intensity -> mean: ", round(mean(dt$opening_intensity), 3),
+    " | median: ", round(median(dt$opening_intensity), 3),
+    " | p95: ", round(quantile(dt$opening_intensity, 0.95), 3), "\n", sep = "")
+```
+
+```{r setup-fixest}
+setFixest_etable(
+  signif.code = c("***" = 0.01, "**" = 0.05, "*" = 0.10),
+  se.below    = TRUE,
+  digits      = 3
+)
+setFixest_fml(
+  ..ctr   = ~ log_county_dep + county_hhi_2014 +
+              deposit_share_2014 + log_branches_2014,
+  ..bctr  = ~ log_county_dep + county_hhi_2014 +
+              deposit_share_2014 + log_branches_2014 +
+              log_assets + roa + premises_assets
+)
+```
+
+```{r models-openings-ols}
+# LHS = opening_intensity (openings / branches_2014). OLS.
+# Cluster by bank (RSSDID).
+m1 <- feols(opening_intensity ~ ..ctr,
+            data = dt, cluster = ~RSSDID)
+m2 <- feols(opening_intensity ~ ..ctr | RSSDID,
+            data = dt, cluster = ~RSSDID)
+m3 <- feols(opening_intensity ~ ..ctr | RSSDID + state,
+            data = dt, cluster = ~RSSDID)
+
+ols_list <- list(m1, m2, m3)
+```
+
+```{r models-openings-poisson}
+# LHS = openings (count). Poisson with log(branches_2014) offset
+# => coefficients = elasticity of opening rate w.r.t. RHS.
+p1 <- fepois(openings ~ ..ctr,
+             offset = ~log(branches_2014), data = dt, cluster = ~RSSDID)
+p2 <- fepois(openings ~ ..ctr | RSSDID,
+             offset = ~log(branches_2014), data = dt, cluster = ~RSSDID)
+p3 <- fepois(openings ~ ..ctr | RSSDID + state,
+             offset = ~log(branches_2014), data = dt, cluster = ~RSSDID)
+
+pois_list <- list(p1, p2, p3)
+```
+
+```{r main-etable}
+all_list <- c(ols_list, pois_list)
+
+mean_lhs_ols  <- round(mean(dt$opening_intensity), 4)
+mean_lhs_pois <- round(mean(dt$openings),          3)
+
+dict <- c(
+  log_county_dep      = "log(County Deposits)",
+  county_hhi_2014     = "County Deposit HHI",
+  deposit_share_2014  = "Bank's Deposit Share in County",
+  log_branches_2014   = "log(Bank Branches in County, 2014)",
+  RSSDID              = "Bank",
+  state               = "State"
+)
+
+et <- etable(all_list,
+             headers = c("OLS", "OLS+B", "OLS+B+S",
+                         "Pois", "Pois+B", "Pois+B+S"),
+             dict   = dict,
+             tex    = FALSE,
+             extralines = list(
+               "Mean(LHS)" = c(rep(mean_lhs_ols, 3), rep(mean_lhs_pois, 3))
+             ))
+df <- as.data.frame(et, stringsAsFactors = FALSE)
+rownames(df) <- NULL
+md <- kable(df, format = "pipe", row.names = FALSE)
+writeLines(as.character(md),
+           file.path(tables_path, "tab_bc_main.md"))
+
+tex_out <- etable(all_list,
+                  headers = c("OLS", "OLS+B", "OLS+B+S",
+                              "Pois", "Pois+B", "Pois+B+S"),
+                  dict   = dict,
+                  tex    = TRUE,
+                  style.tex = style.tex("base"),
+                  extralines = list(
+                    "Mean(LHS)" = c(rep(mean_lhs_ols, 3), rep(mean_lhs_pois, 3))
+                  ))
+writeLines(as.character(tex_out),
+           file.path(tables_path, "tab_bc_main.tex"))
+
+cat("Wrote tab_bc_main.{md,tex}\n")
+```
+
+```{r heterogeneity}
+# Bank-level characteristic interacted with market contestability proxy.
+# Use Poisson + bank FE so bank main effects are absorbed; interaction picks
+# up "does the bank-level edge change opening response to local concentration?".
+
+dt[, z_log_assets       := scale(log_assets)[, 1]]
+dt[, z_roa              := scale(roa)[, 1]]
+dt[, z_premises_assets  := scale(premises_assets)[, 1]]
+dt[, z_county_hhi       := scale(county_hhi_2014)[, 1]]
+
+h1 <- fepois(openings ~ z_county_hhi * z_log_assets +
+                        log_county_dep + deposit_share_2014 + log_branches_2014 |
+              RSSDID + state,
+             offset = ~log(branches_2014), data = dt, cluster = ~RSSDID)
+h2 <- fepois(openings ~ z_county_hhi * z_roa +
+                        log_county_dep + deposit_share_2014 + log_branches_2014 |
+              RSSDID + state,
+             offset = ~log(branches_2014), data = dt, cluster = ~RSSDID)
+h3 <- fepois(openings ~ z_county_hhi * z_premises_assets +
+                        log_county_dep + deposit_share_2014 + log_branches_2014 |
+              RSSDID + state,
+             offset = ~log(branches_2014), data = dt, cluster = ~RSSDID)
+
+het_list <- list(h1, h2, h3)
+
+et2 <- etable(het_list,
+              headers = c("× log(Assets)", "× ROA", "× Premises/A"),
+              dict = c(
+                z_county_hhi       = "County HHI (z)",
+                z_log_assets       = "log(Assets) (z)",
+                z_roa              = "ROA (z)",
+                z_premises_assets  = "Premises/Assets (z)",
+                log_county_dep     = "log(County Deposits)",
+                deposit_share_2014 = "Bank's Dep Share",
+                log_branches_2014  = "log(Branches 2014)",
+                RSSDID             = "Bank",
+                state              = "State"
+              ),
+              tex = FALSE)
+df2 <- as.data.frame(et2, stringsAsFactors = FALSE)
+rownames(df2) <- NULL
+writeLines(as.character(kable(df2, format = "pipe", row.names = FALSE)),
+           file.path(tables_path, "tab_bc_heterogeneity.md"))
+
+tex2 <- etable(het_list,
+               headers = c("× log(Assets)", "× ROA", "× Premises/A"),
+               dict = c(
+                 z_county_hhi       = "County HHI (z)",
+                 z_log_assets       = "log(Assets) (z)",
+                 z_roa              = "ROA (z)",
+                 z_premises_assets  = "Premises/Assets (z)",
+                 log_county_dep     = "log(County Deposits)",
+                 deposit_share_2014 = "Bank's Dep Share",
+                 log_branches_2014  = "log(Branches 2014)",
+                 RSSDID             = "Bank",
+                 state              = "State"
+               ),
+               tex = TRUE,
+               style.tex = style.tex("base"))
+writeLines(as.character(tex2),
+           file.path(tables_path, "tab_bc_heterogeneity.tex"))
+
+cat("Wrote tab_bc_heterogeneity.{md,tex}\n")
+```
+
+```{r key-summary}
+extract <- function(m, term) {
+  s <- summary(m)$coeftable
+  if (!(term %in% rownames(s))) return(c(NA, NA, NA))
+  c(s[term, 1], s[term, 2], s[term, 4])
+}
+
+main_terms <- c("log_county_dep", "county_hhi_2014",
+                "deposit_share_2014", "log_branches_2014")
+
+stars <- function(p) ifelse(is.na(p), "",
+                     ifelse(p < 0.01, "***",
+                     ifelse(p < 0.05, "**",
+                     ifelse(p < 0.10, "*", ""))))
+
+cat("Key Poisson (Pois+B+S) coefficients:\n")
+for (t in main_terms) {
+  e <- extract(p3, t)
+  cat(sprintf("  %-22s  beta=%7.3f  se=%6.3f  p=%5.3f %s\n",
+              t, e[1], e[2], e[3], stars(e[3])))
+}
+
+cat("\nHeterogeneity tests (interaction term):\n")
+for (m in list(h1 = h1, h2 = h2, h3 = h3)) {
+  cf <- summary(m)$coeftable
+  ix <- grep(":", rownames(cf), value = TRUE)
+  for (term in ix) {
+    e <- cf[term, ]
+    cat(sprintf("  %-40s  beta=%7.3f  se=%6.3f  p=%5.3f %s\n",
+                term, e[1], e[2], e[4], stars(e[4])))
+  }
+}
+```

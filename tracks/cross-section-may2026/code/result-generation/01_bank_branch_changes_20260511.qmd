@@ -1,0 +1,216 @@
+---
+title: "Bank-level branch openings and closures, 2014-cohort"
+format: html
+type: source
+execute:
+  warning: false
+  message: false
+---
+
+```{r setup}
+rm(list = ls())
+
+library(data.table)
+library(duckdb)
+library(DBI)
+library(here)
+library(knitr)
+library(stringr)
+library(ggplot2)
+
+track        <- "cross-section-may2026"
+tables_path  <- here("tracks", track, "latex", "tables")
+figures_path <- here("tracks", track, "latex", "figures")
+dir.create(tables_path,  recursive = TRUE, showWarnings = FALSE)
+dir.create(figures_path, recursive = TRUE, showWarnings = FALSE)
+
+primary_blue <- "#012169"
+accent_gray  <- "#525252"
+
+theme_custom <- function(base_size = 14) {
+  theme_minimal(base_size = base_size) +
+    theme(
+      plot.title       = element_text(face = "bold", color = primary_blue),
+      legend.position  = "bottom",
+      legend.title     = element_blank(),
+      plot.background  = element_rect(fill = "transparent", color = NA),
+      panel.background = element_rect(fill = "transparent", color = NA)
+    )
+}
+
+# SOD harmonized DuckDB (built by C:/Users/dimut/OneDrive/github/empirical-data-construction/sod/construct.py)
+sod_db <- "C:/empirical-data-construction/sod/sod.duckdb"
+
+# Branch service type filter: 11 = full-service brick-and-mortar.
+BRSERTYP_FILTER <- 11L
+
+# Cohort cutoff
+COHORT_YEAR  <- 2014L
+MIN_BRANCHES <- 100L
+```
+
+```{r ots-rssds}
+# OTS-to-OCC transfers (2011): RSSDIDs with first new UNINUMBR in 2011 but
+# zero new UNINUMBRs in 2004-2010. Pulled to mirror sod/branch_openings.py logic.
+con <- dbConnect(duckdb(), sod_db, read_only = TRUE)
+
+ots_rssds <- dbGetQuery(con, sprintf("
+  WITH first_year AS (
+    SELECT UNINUMBR, RSSDID, MIN(YEAR) AS first_yr
+    FROM sod
+    WHERE BRSERTYP = %d
+    GROUP BY UNINUMBR, RSSDID
+  ),
+  rssd_window AS (
+    SELECT RSSDID,
+           MAX(CASE WHEN first_yr = 2011 THEN 1 ELSE 0 END) AS opened_2011,
+           MAX(CASE WHEN first_yr BETWEEN 2004 AND 2010 THEN 1 ELSE 0 END) AS opened_pre
+    FROM first_year
+    WHERE first_yr BETWEEN 2004 AND 2011
+    GROUP BY RSSDID
+  )
+  SELECT RSSDID FROM rssd_window WHERE opened_2011 = 1 AND opened_pre = 0
+", BRSERTYP_FILTER))$RSSDID
+
+cat("OTS-excluded RSSDs:", length(ots_rssds), "\n")
+```
+
+```{r year-range}
+max_year <- dbGetQuery(con, sprintf(
+  "SELECT MAX(YEAR) AS my FROM sod WHERE BRSERTYP = %d", BRSERTYP_FILTER
+))$my
+cat("Max SOD year:", max_year, "\n")
+cat("Window:", COHORT_YEAR, "to", max_year, "\n")
+```
+
+```{r build-table}
+ots_clause <- if (length(ots_rssds) == 0) "" else
+  paste0("AND s.RSSDID NOT IN (", paste(ots_rssds, collapse = ","), ")")
+
+sql <- sprintf("
+  WITH first_year AS (
+    SELECT UNINUMBR, MIN(YEAR) AS first_yr
+    FROM sod
+    WHERE BRSERTYP = %1$d
+    GROUP BY UNINUMBR
+  ),
+  last_year AS (
+    SELECT UNINUMBR, MAX(YEAR) AS last_yr
+    FROM sod
+    WHERE BRSERTYP = %1$d
+    GROUP BY UNINUMBR
+  ),
+  banks_2014 AS (
+    SELECT RSSDID,
+           ANY_VALUE(NAMEFULL) AS NAMEFULL,
+           COUNT(*) AS branches_2014
+    FROM sod
+    WHERE YEAR = %2$d
+      AND BRSERTYP = %1$d
+    GROUP BY RSSDID
+    HAVING COUNT(*) >= %3$d
+  ),
+  openings AS (
+    SELECT s.RSSDID, COUNT(*) AS openings
+    FROM sod s
+    JOIN first_year fy
+      ON s.UNINUMBR = fy.UNINUMBR
+     AND s.YEAR = fy.first_yr
+    WHERE s.BRSERTYP = %1$d
+      AND s.YEAR > %2$d
+      %4$s
+    GROUP BY s.RSSDID
+  ),
+  closures AS (
+    SELECT s.RSSDID, COUNT(*) AS closures
+    FROM sod s
+    JOIN last_year ly
+      ON s.UNINUMBR = ly.UNINUMBR
+     AND s.YEAR = ly.last_yr
+    WHERE s.BRSERTYP = %1$d
+      AND ly.last_yr >= %2$d
+      AND ly.last_yr <  %5$d
+    GROUP BY s.RSSDID
+  )
+  SELECT b.NAMEFULL,
+         b.RSSDID,
+         b.branches_2014,
+         COALESCE(c.closures, 0) AS closures,
+         COALESCE(o.openings, 0) AS openings
+  FROM banks_2014 b
+  LEFT JOIN openings o ON b.RSSDID = o.RSSDID
+  LEFT JOIN closures c ON b.RSSDID = c.RSSDID
+  ORDER BY b.branches_2014 DESC
+",
+  BRSERTYP_FILTER,  # 1
+  COHORT_YEAR,      # 2
+  MIN_BRANCHES,     # 3
+  ots_clause,       # 4
+  max_year          # 5  (closures: last_yr strictly before max_year => truly disappeared)
+)
+
+dt <- setDT(dbGetQuery(con, sql))
+dbDisconnect(con, shutdown = TRUE)
+
+dt[, NAMEFULL := stringr::str_to_title(NAMEFULL)]
+cat("Banks in cohort:", nrow(dt), "\n")
+head(dt, 20)
+```
+
+```{r write-table}
+# Pretty version with thousands separators
+dt_out <- copy(dt)
+dt_out[, branches_2014 := formatC(branches_2014, format = "d", big.mark = ",")]
+dt_out[, closures      := formatC(closures,      format = "d", big.mark = ",")]
+dt_out[, openings      := formatC(openings,      format = "d", big.mark = ",")]
+setnames(dt_out,
+         c("NAMEFULL", "RSSDID", "branches_2014", "closures", "openings"),
+         c("Bank", "RSSDID", paste0("Branches ", COHORT_YEAR),
+           paste0("Closures ", COHORT_YEAR, "-", max_year),
+           paste0("Openings ", COHORT_YEAR + 1, "-", max_year)))
+
+# Markdown companion
+md <- kable(dt_out, format = "pipe", row.names = FALSE, align = "lrrrr")
+writeLines(as.character(md), file.path(tables_path, "tab_bank_branch_changes.md"))
+
+# LaTeX (tabular only — section file owns table float + caption)
+tex_tbl <- kable(dt_out, format = "latex", booktabs = TRUE,
+                 row.names = FALSE, align = "lrrrr",
+                 linesep = "")
+writeLines(as.character(tex_tbl),
+           file.path(tables_path, "tab_bank_branch_changes.tex"))
+
+cat("Wrote:\n  ",
+    file.path(tables_path, "tab_bank_branch_changes.md"), "\n  ",
+    file.path(tables_path, "tab_bank_branch_changes.tex"), "\n")
+```
+
+```{r hist-opening-share-churn}
+MIN_CHURN <- 20L  # drop banks with too little activity for ratio to be meaningful
+
+dt_hist <- copy(dt)
+dt_hist[, churn := closures + openings]
+dt_hist[, open_share := ifelse(churn >= MIN_CHURN, openings / churn, NA_real_)]
+
+n_total   <- nrow(dt_hist)
+n_dropped <- sum(is.na(dt_hist$open_share))
+n_used    <- n_total - n_dropped
+med_share <- median(dt_hist$open_share, na.rm = TRUE)
+
+cat(sprintf("Cohort %d | used %d | dropped %d (churn < %d) | median = %.3f\n",
+            n_total, n_used, n_dropped, MIN_CHURN, med_share))
+
+p <- ggplot(dt_hist[!is.na(open_share)], aes(x = open_share)) +
+  geom_histogram(binwidth = 0.05, boundary = 0,
+                 fill = primary_blue, color = "white") +
+  geom_vline(xintercept = 0.5, linetype = "dashed", color = accent_gray) +
+  scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.2)) +
+  labs(x = "Openings / (Openings + Closures)",
+       y = "Number of banks") +
+  theme_custom()
+
+ggsave(file.path(figures_path, "fig_opening_share_churn.png"),
+       p, width = 7, height = 4.5, dpi = 300, bg = "white")
+
+cat("Wrote: ", file.path(figures_path, "fig_opening_share_churn.png"), "\n")
+```

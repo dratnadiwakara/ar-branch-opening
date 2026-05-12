@@ -1,0 +1,381 @@
+---
+title: "High vs low opening-share-of-churn: bank characteristics"
+format: html
+type: source
+execute:
+  warning: false
+  message: false
+---
+
+```{r setup}
+rm(list = ls())
+
+library(data.table)
+library(duckdb)
+library(DBI)
+library(here)
+library(knitr)
+library(stringr)
+
+track        <- "cross-section-may2026"
+tables_path  <- here("tracks", track, "latex", "tables")
+dir.create(tables_path,  recursive = TRUE, showWarnings = FALSE)
+
+sod_db    <- "C:/empirical-data-construction/sod/sod.duckdb"
+ffiec_db  <- "C:/empirical-data-construction/call-reports-FFIEC/call-reports-ffiec.duckdb"
+
+BRSERTYP_FILTER <- 11L
+COHORT_YEAR     <- 2014L
+MIN_BRANCHES    <- 100L
+MIN_CHURN       <- 20L
+```
+
+```{r build-cohort}
+# Reproduce cohort + opening-share calc from 01_*.qmd
+con <- dbConnect(duckdb(), sod_db, read_only = TRUE)
+
+ots_rssds <- dbGetQuery(con, sprintf("
+  WITH first_year AS (
+    SELECT UNINUMBR, RSSDID, MIN(YEAR) AS first_yr
+    FROM sod WHERE BRSERTYP = %d
+    GROUP BY UNINUMBR, RSSDID
+  ),
+  rssd_window AS (
+    SELECT RSSDID,
+           MAX(CASE WHEN first_yr = 2011 THEN 1 ELSE 0 END) AS opened_2011,
+           MAX(CASE WHEN first_yr BETWEEN 2004 AND 2010 THEN 1 ELSE 0 END) AS opened_pre
+    FROM first_year WHERE first_yr BETWEEN 2004 AND 2011
+    GROUP BY RSSDID
+  )
+  SELECT RSSDID FROM rssd_window WHERE opened_2011 = 1 AND opened_pre = 0
+", BRSERTYP_FILTER))$RSSDID
+
+max_year <- dbGetQuery(con, sprintf(
+  "SELECT MAX(YEAR) AS my FROM sod WHERE BRSERTYP = %d", BRSERTYP_FILTER))$my
+
+ots_clause <- if (length(ots_rssds) == 0) "" else
+  paste0("AND s.RSSDID NOT IN (", paste(ots_rssds, collapse = ","), ")")
+
+cohort <- setDT(dbGetQuery(con, sprintf("
+  WITH first_year AS (
+    SELECT UNINUMBR, MIN(YEAR) AS first_yr FROM sod WHERE BRSERTYP = %1$d
+    GROUP BY UNINUMBR
+  ),
+  last_year AS (
+    SELECT UNINUMBR, MAX(YEAR) AS last_yr FROM sod WHERE BRSERTYP = %1$d
+    GROUP BY UNINUMBR
+  ),
+  banks_2014 AS (
+    SELECT RSSDID, ANY_VALUE(NAMEFULL) AS NAMEFULL, COUNT(*) AS branches_2014
+    FROM sod WHERE YEAR = %2$d AND BRSERTYP = %1$d
+    GROUP BY RSSDID HAVING COUNT(*) >= %3$d
+  ),
+  openings AS (
+    SELECT s.RSSDID, COUNT(*) AS openings
+    FROM sod s
+    JOIN first_year fy ON s.UNINUMBR = fy.UNINUMBR AND s.YEAR = fy.first_yr
+    WHERE s.BRSERTYP = %1$d AND s.YEAR > %2$d %4$s
+    GROUP BY s.RSSDID
+  ),
+  closures AS (
+    SELECT s.RSSDID, COUNT(*) AS closures
+    FROM sod s
+    JOIN last_year ly ON s.UNINUMBR = ly.UNINUMBR AND s.YEAR = ly.last_yr
+    WHERE s.BRSERTYP = %1$d AND ly.last_yr >= %2$d AND ly.last_yr < %5$d
+    GROUP BY s.RSSDID
+  )
+  SELECT b.RSSDID, b.NAMEFULL, b.branches_2014,
+         COALESCE(c.closures, 0) AS closures,
+         COALESCE(o.openings, 0) AS openings
+  FROM banks_2014 b
+  LEFT JOIN openings o ON b.RSSDID = o.RSSDID
+  LEFT JOIN closures c ON b.RSSDID = c.RSSDID
+", BRSERTYP_FILTER, COHORT_YEAR, MIN_BRANCHES, ots_clause, max_year)))
+
+cohort[, churn := closures + openings]
+cohort <- cohort[churn >= MIN_CHURN]
+cohort[, open_share := openings / churn]
+med <- median(cohort$open_share, na.rm = TRUE)
+cohort[, group := ifelse(open_share > med, "High", "Low")]
+cat("Cohort after churn filter:", nrow(cohort),
+    "| median open_share =", round(med, 3),
+    "| High =", sum(cohort$group == "High"),
+    "| Low =", sum(cohort$group == "Low"), "\n")
+```
+
+```{r sod-geography}
+# Geographic measures from SOD 2014 for each cohort bank.
+# Branch HHI = sum_c (bank_dep_in_c / bank_total_dep)^2
+# Avg county HHI exposure = sum_c (bank_dep_in_c / bank_total_dep) * county_HHI_c
+# County HHI computed from ALL banks (not just cohort).
+rssd_list <- paste(cohort$RSSDID, collapse = ",")
+
+sod_2014 <- setDT(dbGetQuery(con, sprintf("
+  SELECT RSSDID, LPAD(STCNTYBR, 5, '0') AS county_fips, DEPSUMBR
+  FROM sod WHERE YEAR = %d AND BRSERTYP = %d
+", COHORT_YEAR, BRSERTYP_FILTER)))
+# STALP in raw SOD is institution-level (HQ state) not branch state — derive
+# branch state from leading 2 chars of county FIPS instead.
+sod_2014[, branch_state := substr(county_fips, 1, 2)]
+
+# County-level HHI (across ALL SOD banks in that county-year)
+county_hhi <- sod_2014[, .(county_dep = sum(DEPSUMBR, na.rm = TRUE)), by = .(county_fips, RSSDID)]
+county_tot <- county_hhi[, .(tot = sum(county_dep)), by = county_fips]
+county_hhi <- merge(county_hhi, county_tot, by = "county_fips")
+county_hhi[, share := county_dep / tot]
+county_hhi_idx <- county_hhi[, .(county_hhi = sum(share^2)), by = county_fips]
+
+# Per-bank geography: restrict to cohort RSSDIDs
+b_county <- sod_2014[RSSDID %in% cohort$RSSDID,
+                     .(bank_dep_c = sum(DEPSUMBR, na.rm = TRUE),
+                       branches_c = .N),
+                     by = .(RSSDID, county_fips)]
+b_county <- merge(b_county, county_hhi_idx, by = "county_fips", all.x = TRUE)
+b_tot <- b_county[, .(bank_dep_tot = sum(bank_dep_c)), by = RSSDID]
+b_county <- merge(b_county, b_tot, by = "RSSDID")
+b_county[, w := bank_dep_c / bank_dep_tot]
+
+geo <- b_county[, .(
+  branch_geo_hhi   = sum(w^2),
+  avg_local_hhi    = sum(w * county_hhi),
+  n_counties       = uniqueN(county_fips),
+  total_branches   = sum(branches_c)
+), by = RSSDID]
+
+states <- sod_2014[RSSDID %in% cohort$RSSDID,
+                   .(n_states = uniqueN(branch_state)), by = RSSDID]
+geo <- merge(geo, states, by = "RSSDID", all.x = TRUE)
+
+dbDisconnect(con, shutdown = TRUE)
+nrow(geo); head(geo, 5)
+```
+
+```{r call-reports}
+# 2014-Q4 snapshot, harmonized layer.
+fcon <- dbConnect(duckdb(), ffiec_db, read_only = TRUE)
+
+cr <- setDT(dbGetQuery(fcon, sprintf("
+  SELECT b.id_rssd AS RSSDID,
+         b.assets, b.deposits, b.domestic_dep,
+         b.equity, b.ln_tot, b.ln_re, b.ln_ci, b.ln_cons, b.ln_cc, b.ln_agr,
+         b.npl_tot, b.llres,
+         b.securities, b.cash, b.premises,
+         b.brokered_dep, b.dom_deposit_nib, b.dom_deposit_ib,
+         b.qtr_avg_assets,
+         i.ytdnetinc, i.ytdint_inc_net, i.ytdnonint_exp, i.ytdnonint_inc,
+         i.ytdchargeoffs, i.ytdrecoveries,
+         i.num_employees
+  FROM bs_panel b
+  LEFT JOIN is_panel i USING (id_rssd, date)
+  WHERE b.activity_year = %d AND b.activity_quarter = 4
+    AND b.id_rssd IN (%s)
+", COHORT_YEAR, rssd_list)))
+
+dbDisconnect(fcon, shutdown = TRUE)
+cat("Call Report matches:", nrow(cr), "/", nrow(cohort), "\n")
+setdiff(cohort$RSSDID, cr$RSSDID)
+```
+
+```{r build-vars}
+dt <- merge(cohort, cr,  by = "RSSDID", all.x = TRUE)
+dt <- merge(dt,     geo, by = "RSSDID", all.x = TRUE)
+
+# Size
+dt[, log_assets   := log(assets)]
+dt[, log_deposits := log(deposits)]
+dt[, log_branches := log(branches_2014)]
+dt[, log_dep_per_branch := log(deposits / branches_2014)]
+
+# Capital
+dt[, equity_assets := equity / assets]
+
+# Profitability (annualized, Q4 YTD = full year)
+dt[, roa := ytdnetinc / qtr_avg_assets]
+dt[, nim := ytdint_inc_net / qtr_avg_assets]
+
+# Efficiency
+dt[, eff_ratio  := ytdnonint_exp / (ytdint_inc_net + ytdnonint_inc)]
+dt[, nonint_exp_assets := ytdnonint_exp / assets]
+dt[, premises_assets   := premises / assets]
+
+# Asset composition
+dt[, loans_assets      := ln_tot / assets]
+dt[, securities_assets := securities / assets]
+dt[, cash_assets       := cash / assets]
+
+# Loan mix
+dt[, re_share   := ln_re / ln_tot]
+dt[, ci_share   := ln_ci / ln_tot]
+dt[, cons_share := ln_cons / ln_tot]
+dt[, cc_share   := ln_cc / ln_tot]
+
+# Credit risk
+# Skip npl_loans: harmonized npl_tot returns 0 for many large 031 filers
+# (RC-N RCFD1403/1407 are NULL on those filings; aggregate not reported).
+dt[, llres_loans         := llres / ln_tot]
+dt[, net_chargeoffs_loans := (ytdchargeoffs - ytdrecoveries) / ln_tot]
+
+# Funding
+dt[, deposits_assets  := deposits / assets]
+dt[, nib_share        := dom_deposit_nib / domestic_dep]
+dt[, brokered_share   := brokered_dep / deposits]
+
+# Geography (already in: branch_geo_hhi, avg_local_hhi, n_counties, n_states)
+
+# Productivity
+dt[, log_employees := log(num_employees)]
+dt[, assets_per_employee := assets / num_employees]
+```
+
+```{r compare}
+vars <- c(
+  # Size
+  "log_assets", "log_deposits", "log_branches",
+  # Capital
+  "equity_assets",
+  # Profitability
+  "roa", "nim",
+  # Efficiency
+  "eff_ratio", "nonint_exp_assets", "premises_assets",
+  # Asset composition
+  "loans_assets", "securities_assets", "cash_assets",
+  # Loan mix
+  "re_share", "ci_share", "cons_share", "cc_share",
+  # Credit risk
+  "llres_loans", "net_chargeoffs_loans",
+  # Funding
+  "deposits_assets", "nib_share", "brokered_share",
+  # Branch / geography
+  "log_dep_per_branch", "branch_geo_hhi", "avg_local_hhi", "n_counties", "n_states",
+  # Workforce
+  "log_employees", "assets_per_employee"
+)
+
+labels <- c(
+  log_assets         = "log(Assets)",
+  log_deposits       = "log(Deposits)",
+  log_branches       = "log(Branches 2014)",
+  equity_assets      = "Equity / Assets",
+  roa                = "ROA",
+  nim                = "NIM",
+  eff_ratio          = "Efficiency Ratio",
+  nonint_exp_assets  = "Noninterest Exp / Assets",
+  premises_assets    = "Premises / Assets",
+  loans_assets       = "Loans / Assets",
+  securities_assets  = "Securities / Assets",
+  cash_assets        = "Cash / Assets",
+  re_share           = "RE Loans / Loans",
+  ci_share           = "C\\&I Loans / Loans",
+  cons_share         = "Consumer Loans / Loans",
+  cc_share           = "Credit Card Loans / Loans",
+  llres_loans          = "Allowance / Loans",
+  net_chargeoffs_loans = "Net Charge-offs / Loans",
+  deposits_assets    = "Deposits / Assets",
+  nib_share          = "Noninterest-Bearing Dep Share",
+  brokered_share     = "Brokered Dep / Deposits",
+  log_dep_per_branch = "log(Deposits / Branch)",
+  branch_geo_hhi     = "Own-Deposit Geographic HHI",
+  avg_local_hhi      = "Avg County Deposit HHI (weighted)",
+  n_counties         = "Counties Operated",
+  n_states           = "States Operated",
+  log_employees      = "log(Employees)",
+  assets_per_employee = "Assets / Employee ($K)"
+)
+
+# Drop banks missing Call Report (shouldn't be any, but guard)
+dt_use <- dt[!is.na(assets)]
+cat("N in comparison:", nrow(dt_use),
+    "| High:", sum(dt_use$group == "High"),
+    "| Low:",  sum(dt_use$group == "Low"), "\n")
+
+compare_one <- function(v) {
+  x_lo <- dt_use[group == "Low",  get(v)]
+  x_hi <- dt_use[group == "High", get(v)]
+  x_lo <- x_lo[is.finite(x_lo)]
+  x_hi <- x_hi[is.finite(x_hi)]
+  if (length(x_lo) < 3 || length(x_hi) < 3)
+    return(data.table(var = v, low_mean = NA, low_sd = NA, high_mean = NA, high_sd = NA,
+                      diff = NA, t = NA, p = NA, n_low = length(x_lo), n_high = length(x_hi)))
+  tt <- tryCatch(t.test(x_hi, x_lo, var.equal = FALSE), error = function(e) NULL)
+  if (is.null(tt)) return(data.table(var = v, low_mean = mean(x_lo), low_sd = sd(x_lo),
+                                     high_mean = mean(x_hi), high_sd = sd(x_hi),
+                                     diff = mean(x_hi) - mean(x_lo), t = NA, p = NA,
+                                     n_low = length(x_lo), n_high = length(x_hi)))
+  data.table(var = v,
+             low_mean  = mean(x_lo), low_sd  = sd(x_lo),
+             high_mean = mean(x_hi), high_sd = sd(x_hi),
+             diff      = mean(x_hi) - mean(x_lo),
+             t         = unname(tt$statistic),
+             p         = tt$p.value,
+             n_low     = length(x_lo), n_high = length(x_hi))
+}
+
+res <- rbindlist(lapply(vars, compare_one))
+res[, label := labels[var]]
+setcolorder(res, c("label", "low_mean", "low_sd", "high_mean", "high_sd", "diff", "t", "p", "n_low", "n_high", "var"))
+res
+```
+
+```{r format-and-write}
+stars <- function(p) ifelse(is.na(p), "",
+                     ifelse(p < 0.01, "***",
+                     ifelse(p < 0.05, "**",
+                     ifelse(p < 0.10, "*", ""))))
+
+fmt <- function(x, d = 3) ifelse(is.na(x), "", formatC(x, format = "f", digits = d))
+
+# Variables that should print with fewer/more decimals
+big_d2 <- c("log_assets", "log_deposits", "log_branches", "eff_ratio",
+            "log_dep_per_branch", "log_employees", "n_counties", "n_states",
+            "assets_per_employee")
+
+res[, ":=" (
+  Low       = ifelse(var %in% big_d2,
+                     paste0(fmt(low_mean, 2),  " (", fmt(low_sd, 2),  ")"),
+                     paste0(fmt(low_mean, 3),  " (", fmt(low_sd, 3),  ")")),
+  High      = ifelse(var %in% big_d2,
+                     paste0(fmt(high_mean, 2), " (", fmt(high_sd, 2), ")"),
+                     paste0(fmt(high_mean, 3), " (", fmt(high_sd, 3), ")")),
+  Diff      = ifelse(var %in% big_d2,
+                     paste0(fmt(diff, 2), stars(p)),
+                     paste0(fmt(diff, 3), stars(p))),
+  Tstat     = fmt(t, 2)
+)]
+
+out <- res[, .(Variable = label, Low, High, Diff, Tstat)]
+
+md <- kable(out, format = "pipe", row.names = FALSE,
+            align = "lrrrr",
+            col.names = c("Variable",
+                          sprintf("Low (n=%d)",  sum(dt_use$group == "Low")),
+                          sprintf("High (n=%d)", sum(dt_use$group == "High")),
+                          "Diff (High - Low)",
+                          "t-stat"))
+writeLines(as.character(md), file.path(tables_path, "tab_high_low_open_share.md"))
+
+tex <- kable(out, format = "latex", booktabs = TRUE, row.names = FALSE,
+             align = "lrrrr",
+             col.names = c("Variable",
+                           sprintf("Low (n=%d)",  sum(dt_use$group == "Low")),
+                           sprintf("High (n=%d)", sum(dt_use$group == "High")),
+                           "Diff",
+                           "t"),
+             escape = FALSE,
+             linesep = "")
+writeLines(as.character(tex), file.path(tables_path, "tab_high_low_open_share.tex"))
+
+cat("Wrote:\n  ",
+    file.path(tables_path, "tab_high_low_open_share.md"), "\n  ",
+    file.path(tables_path, "tab_high_low_open_share.tex"), "\n")
+```
+
+```{r print-summary}
+# Significant differences only (p < 0.10)
+sig <- res[!is.na(p) & p < 0.10,
+           .(Variable = label,
+             Low  = round(low_mean,  3),
+             High = round(high_mean, 3),
+             Diff = round(diff,      3),
+             p    = round(p,         3))]
+sig
+```

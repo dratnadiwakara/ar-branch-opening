@@ -22,7 +22,8 @@ tracks/<descriptor>-<month-year>/code/archives/              ← old scripts (no
 tracks/<descriptor>-<month-year>/data/                       ← track-specific intermediate datasets
 tracks/<descriptor>-<month-year>/latex/main.tex              ← full paper draft for this track
 tracks/<descriptor>-<month-year>/latex/main.bib              ← BibTeX references
-tracks/<descriptor>-<month-year>/latex/sections/             ← section .tex files (\input{} from main.tex)
+tracks/<descriptor>-<month-year>/latex/tables_figures.tex    ← ALL table/figure floats; \input{} from main.tex AFTER bibliography
+tracks/<descriptor>-<month-year>/latex/sections/             ← section .tex files, prose only (\input{} from main.tex)
 tracks/<descriptor>-<month-year>/latex/figures/              ← figures emitted by this track's scripts
 tracks/<descriptor>-<month-year>/latex/tables/               ← tables emitted by this track's scripts
 tracks/<descriptor>-<month-year>/latex/build/                ← pdflatex output (gitignored)
@@ -260,7 +261,7 @@ writeLines(as.character(md), paste0(tables_path, "tab_name.md"))
 
 ### Editing etable .tex Output (decimal alignment, tabular-only export)
 
-Saved `.tex` files in `tracks/<name>/latex/tables/` must contain **only** the `\begin{tabular}...\end{tabular}` block — never an outer `\begin{table}...\end{table}` wrapper. Section files (e.g. `results_current.tex`) own the table float, caption, label, `\resizebox`, and `\adddescription`. A nested `\begin{table}` from `etable()` triggers `! LaTeX Error: Not in outer par mode.`
+Saved `.tex` files in `tracks/<name>/latex/tables/` must contain **only** the `\begin{tabular}...\end{tabular}` block — never an outer `\begin{table}...\end{table}` wrapper. The wrapper, caption, label, `\resizebox`, and `\adddescription` live in `tracks/<name>/latex/tables_figures.tex` (inserted by `/skills/latex-table-inserter`). A nested `\begin{table}` from `etable()` triggers `! LaTeX Error: Not in outer par mode.`
 
 **Always pass `style.tex = style.tex("base")` to `etable()`.** This emits a bare `tabular` fragment with no `\begin{table}`, no `\caption{}`, and no `\label{}` — the canonical wrapper, caption, and label come from the inserter skill, not from the source `.tex` file. Skip `title=` and `label=` entirely.
 
@@ -535,7 +536,10 @@ All paths below are **relative to the active track's `latex/` folder** (i.e. `tr
 
 - Output directory for pdflatex: `tracks/<name>/latex/build/`
 - Figures referenced as `\includegraphics{figures/filename}` (graphicspath set in the track's `main.tex`)
-- Tables `\input{}`-ed from `tables/` or inline in section files
-- Section files: `sections/<section>/<section>_current.tex` (`\input{}`-ed from `main.tex`)
+- Section files: `sections/<section>/<section>_current.tex` (`\input{}`-ed from `main.tex`). Section files are **prose only** — they carry `\section{}` / `\subsection{}` headings and the narrative, and they reference floats via `\ref{tab:...}` / `\ref{fig:...}`. They do **not** contain `\begin{table}` or `\begin{figure}` environments.
+- **All table and figure floats live in `tables_figures.tex`** at the track's `latex/` root (not under `sections/`). This file is `\input{}`-ed from `main.tex` *after* `\bibliography{main}`, so tables and figures appear at the end of the manuscript, following the references. `tables_figures.tex` has **no section heading** of its own — it is just an unsectioned sequence of `\begin{table}...\end{table}` and `\begin{figure}...\end{figure}` blocks, each with its own `\caption{}`, `\label{}`, `\adddescription{}`, and `\input{tables/...}` / `\includegraphics{figures/...}`.
+- Insert new tables and figures into `tables_figures.tex` via `/skills/latex-table-inserter <track> <tables/...>` and `/skills/latex-figure-inserter <track> <figures/...>`. Both skills target `tables_figures.tex` exclusively — never a section file.
+- Tabular fragments in `tables/<name>.tex` and image files in `figures/<name>.png` remain emitted directly from the track's `code/result-generation/` scripts. They are wrapped into floats only when an inserter skill writes the wrapper into `tables_figures.tex`.
+- The `results` section (`sections/results/results_current.tex`) is the **interpretation and discussion** of the empirical findings — prose about what the headline numbers mean. It is not a host for floats. Heterogeneity, robustness, and other body sections follow the same prose-only rule.
 - Never edit `build/` contents directly
 - Compile sequence: `pdflatex → bibtex → pdflatex → pdflatex` (all run from the track's `latex/` directory)

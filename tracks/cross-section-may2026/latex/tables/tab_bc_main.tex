@@ -1,0 +1,36 @@
+\begingroup
+\centering
+\begin{tabular}{lcccccc}
+   \tabularnewline \midrule \midrule
+   Dependent Variables: & \multicolumn{3}{c}{opening\_intensity} & \multicolumn{3}{c}{openings}\\
+                                      & OLS            & OLS+B          & OLS+B+S        & Pois           & Pois+B         & Pois+B+S \\   
+   Model:                             & (1)            & (2)            & (3)            & (4)            & (5)            & (6)\\  
+                                      &  OLS           & OLS            & OLS            & Poisson        & Poisson        & Poisson\\  
+   \midrule
+   \emph{Variables}\\
+   Constant                           & -0.831$^{***}$ &                &                & -10.5$^{***}$  &                &   \\   
+                                      & (0.175)        &                &                & (1.15)         &                &   \\   
+   log(County Deposits)               & 0.064$^{***}$  & 0.072$^{***}$  & 0.072$^{***}$  & 0.544$^{***}$  & 0.700$^{***}$  & 0.750$^{***}$\\   
+                                      & (0.013)        & (0.014)        & (0.014)        & (0.074)        & (0.043)        & (0.044)\\   
+   County Deposit HHI                 & 0.053          & 0.064          & 0.079          & -1.03$^{***}$  & -1.66$^{***}$  & -1.97$^{***}$\\   
+                                      & (0.049)        & (0.049)        & (0.051)        & (0.345)        & (0.294)        & (0.323)\\   
+   Bank's Deposit Share in County     & 0.155$^{***}$  & 0.179$^{***}$  & 0.179$^{***}$  & -1.04$^{**}$   & -1.63$^{***}$  & -1.42$^{***}$\\   
+                                      & (0.048)        & (0.047)        & (0.047)        & (0.507)        & (0.557)        & (0.538)\\   
+   log(Bank Branches in County, 2014) & -0.070$^{***}$ & -0.080$^{***}$ & -0.081$^{***}$ & -0.498$^{***}$ & -0.751$^{***}$ & -0.777$^{***}$\\   
+                                      & (0.016)        & (0.018)        & (0.018)        & (0.105)        & (0.059)        & (0.069)\\   
+   Mean(LHS)                          & 0.0463         & 0.0463         & 0.0463         & 0.274          & 0.274          & 0.274\\  
+   \midrule
+   \emph{Fixed-effects}\\
+   Bank                               &                & Yes            & Yes            &                & Yes            & Yes\\  
+   State                              &                &                & Yes            &                &                & Yes\\  
+   \midrule
+   \emph{Fit statistics}\\
+   Observations                       & 8,450          & 8,450          & 8,449          & 8,450          & 7,988          & 7,821\\  
+   Squared Correlation                & 0.05521        & 0.11695        & 0.12775        & 0.29409        & 0.51316        & 0.57210\\  
+   Pseudo R$^2$                       & 0.17336        & 0.37963        & 0.41705        & 0.38601        & 0.51198        & 0.53277\\  
+   BIC                                & 2,333.6        & 2,476.9        & 2,834.8        & 8,826.1        & 7,517.3        & 7,590.4\\  
+   \midrule \midrule
+   \multicolumn{7}{l}{\emph{Clustered (Bank) standard-errors in parentheses}}\\
+   \multicolumn{7}{l}{\emph{Signif. Codes: ***: 0.01, **: 0.05, *: 0.1}}\\
+\end{tabular}
+\par\endgroup

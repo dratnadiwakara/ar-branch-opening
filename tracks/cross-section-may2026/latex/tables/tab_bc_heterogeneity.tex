@@ -1,0 +1,38 @@
+\begingroup
+\centering
+\begin{tabular}{lccc}
+   \tabularnewline \midrule \midrule
+   Dependent Variable: & \multicolumn{3}{c}{openings}\\
+                                                & × log(Assets)  & × ROA          & × Premises/A \\   
+   Model:                                       & (1)            & (2)            & (3)\\  
+   \midrule
+   \emph{Variables}\\
+   County HHI (z)                               & -0.259$^{***}$ & -0.261$^{***}$ & -0.260$^{***}$\\   
+                                                & (0.047)        & (0.045)        & (0.042)\\   
+   log(County Deposits)                         & 0.750$^{***}$  & 0.750$^{***}$  & 0.750$^{***}$\\   
+                                                & (0.044)        & (0.044)        & (0.044)\\   
+   Bank's Dep Share                             & -1.41$^{**}$   & -1.42$^{***}$  & -1.42$^{***}$\\   
+                                                & (0.559)        & (0.536)        & (0.544)\\   
+   log(Branches 2014)                           & -0.778$^{***}$ & -0.777$^{***}$ & -0.777$^{***}$\\   
+                                                & (0.070)        & (0.070)        & (0.069)\\   
+   County HHI (z) $\times$ log(Assets) (z)      & -0.007         &                &   \\   
+                                                & (0.046)        &                &   \\   
+   County HHI (z) $\times$ ROA (z)              &                & 0.030          &   \\   
+                                                &                & (0.049)        &   \\   
+   County HHI (z) $\times$ Premises/Assets (z)  &                &                & -0.005\\   
+                                                &                &                & (0.030)\\   
+   \midrule
+   \emph{Fixed-effects}\\
+   Bank                                         & Yes            & Yes            & Yes\\  
+   State                                        & Yes            & Yes            & Yes\\  
+   \midrule
+   \emph{Fit statistics}\\
+   Observations                                 & 7,821          & 7,821          & 7,821\\  
+   Squared Correlation                          & 0.57225        & 0.57253        & 0.57194\\  
+   Pseudo R$^2$                                 & 0.53278        & 0.53282        & 0.53278\\  
+   BIC                                          & 7,599.3        & 7,598.7        & 7,599.3\\  
+   \midrule \midrule
+   \multicolumn{4}{l}{\emph{Clustered (Bank) standard-errors in parentheses}}\\
+   \multicolumn{4}{l}{\emph{Signif. Codes: ***: 0.01, **: 0.05, *: 0.1}}\\
+\end{tabular}
+\par\endgroup

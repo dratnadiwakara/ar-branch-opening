@@ -1,164 +1,27 @@
-% Results — [PAPER_TITLE]
-% Last edited: [DATE]
+% Results --- Why Banks Open Branches in the Digital Era
+% Last edited: 2026-05-12
 
-\clearpage
-\begin{figure}
-    \centering
-    \adddescription{
-    \small
-This figure plots the total number of FDIC-insured bank branches in the United States by year. The series is constructed as the count of branch-year observations in the FDIC Summary of Deposits, spanning the full coverage of the SOD through the most recent reporting year. The vertical axis reports branch counts; the horizontal axis is calendar year.
-    }
-    \includegraphics[width=0.75\textwidth]{figures/fig_us_branches_total.png}
-    \caption{Total U.S. Bank Branches}
-    \label{fig:us_branches_total}
-\end{figure}
+\section{Results}
+\label{sec:results}
 
-\clearpage
-\begin{figure}
-    \centering
-    \adddescription{
-    \small
-This figure plots the annual count of de novo branch openings in the United States from 2012 onward, stacked by the opening bank's total-asset bucket at the time of opening. The vertical axis reports the number of openings; the horizontal axis is calendar year. An opening is the first appearance of a branch identifier (UNINUMBR) in the FDIC Summary of Deposits; institution-level transfers from the Office of Thrift Supervision to the Office of the Comptroller of the Currency in 2011 are excluded. Asset buckets are defined on the opening bank's reported SOD assets in the year of opening: $<$\$1B, \$1B--\$10B, \$10B--\$100B, and $\geq$\$100B. The four colors correspond to these four buckets in the legend, ordered from smallest at the bottom of the stack to largest at the top.
-    }
-    \includegraphics[width=0.75\textwidth]{figures/fig_openings_by_size_stacked.png}
-    \caption{De Novo Branch Openings by Bank Size}
-    \label{fig:openings_by_size_stacked}
-\end{figure}
+\citet{narayanan2025decline} establish that bank branch entry concentrates in markets with high local deposit beta --- the markets in which incumbent depositors are most rate-sensitive and incumbent branches are least profitable on the deposit margin. Table~\ref{tab:deposit_beta_main} confirms that pattern in our larger sample. Estimated from equation~(\ref{eq:main}) with deposit beta entering on its own, the coefficient on the imputed bank--ZIP--year deposit beta is positive in every size bucket --- 0.0301 for banks at or above one hundred billion dollars in assets (significant at the ten percent level), 0.0330 for the ten-to-hundred-billion bucket (one percent), and 0.0223 for the one-to-ten-billion bucket (one percent) --- so that a one-standard-deviation increase in deposit beta raises the probability of opening a branch in a candidate ZIP by between one third and one half of the within-bucket mean opening rate. The sign is on the entry margin what \citet{narayanan2025decline} document on the exit margin, and the magnitude is in line with theirs.
 
-\clearpage
-\begin{figure}
-    \centering
-    \adddescription{
-    \small
-This figure presents the candidate-market geography for three large banks in three different years. Each panel shades Census ZIP Code Tabulation Areas (ZCTAs) by the bank's status in that ZIP for the indicated year: blue if the bank operated at least one branch in the ZIP, gold if the ZIP was inside the bank's opportunity set --- a Core Based Statistical Area (CBSA) where the bank operated, or a nonmetro county where the bank operated --- but the bank had no branch there. ZIPs outside the opportunity set are not filled. Panel A shows JPMorgan Chase in 2016, Panel B shows Bank of America in 2018, and Panel C shows Wells Fargo in 2022. ZCTA boundaries are drawn from the 2020 TIGER/Line shapefiles; the contiguous United States is shown.
-    }
-    \begin{minipage}{0.48\textwidth}
-        \centering
-        Panel A: JPMorgan Chase, 2016\\
-        \includegraphics[width=\textwidth]{figures/fig_map_jpm_2016.png}
-    \end{minipage}\hfill
-    \begin{minipage}{0.48\textwidth}
-        \centering
-        Panel B: Bank of America, 2018\\
-        \includegraphics[width=\textwidth]{figures/fig_map_boa_2018.png}
-    \end{minipage}
-    \vspace{0.5cm}\\
-    \begin{minipage}{0.48\textwidth}
-        \centering
-        Panel C: Wells Fargo, 2022\\
-        \includegraphics[width=\textwidth]{figures/fig_map_wfc_2022.png}
-    \end{minipage}
-    \caption{Candidate Markets for Three Large Banks}
-    \label{fig:map_candidate_markets}
-\end{figure}
+That pattern creates the puzzle the rest of this section is built to resolve. If depositors in a high-beta ZIP demand higher rates to keep their money there, the marginal deposit dollar in that ZIP is mechanically less profitable to a bank that only earns the deposit-rate spread. A profit-maximizing bank that picks a candidate ZIP from inside its CBSA footprint should therefore prefer low-beta ZIPs, holding everything else fixed --- and yet the data say it does the opposite. We conjecture that a bank only finds it worthwhile to open a branch in a high-beta market when it has a complementary edge that lets it monetize the customer beyond the deposit-rate margin --- either a cost structure that makes it cheaper than local incumbents to serve the customer, or an existing non-branch lending franchise that turns the branch into a distribution channel for a higher-lifetime-value relationship. Under this conjecture, the unconditional contestability coefficient in Table~\ref{tab:deposit_beta_main} should not load uniformly across banks; it should sharpen where the bank holds a cost or lending edge and weaken where it does not. The two subsections below test that prediction.
 
+\subsection{Efficiency Edge}
+\label{sec:results:efficiency}
 
-\clearpage
-\begin{table}[]
-    \centering
-    \adddescription{
-\small
-This table reports summary statistics for the bank--zip--year panel used in the branch-opening regressions, separately by bank-asset bucket. Panel A covers banks with assets above \$100B and reports the dependent variable, the key right-hand-side variables, and the full set of zip-level controls used in the regressions. Panels B and C cover banks with assets in \$10B--\$100B and \$1B--\$10B, respectively, and report only the dependent variable and key right-hand-side variables (the controls have the same definitions and similar moments and are therefore omitted to save space). The dependent variable, $opening$, equals one if bank $b$ first appears as a branch in zip $z$ in year $t$. The key right-hand-side variables are: the bank--cycle deposit beta, an indicator for a positive rate-paying advantage relative to incumbents, an indicator for an interest-expense-to-assets undercut share above 0.5, and indicators for the bank's mortgage and CRA small-business presence in the zip at $t-1$. The sample is restricted to non-missing values of the baseline controls and lags, and the variables ($\beta$, rate-paying advantage, and the zip-level growth and demographic controls) are winsorized within year at the 1st and 99th percentiles. Mean, standard deviation, the 10th, 50th, and 90th percentiles, and the number of non-missing observations are reported.
-    }
+Table~\ref{tab:rate_paying_advantage} reads the cost-side margin. Panel A enters the rate-paying-advantage indicator (one if the bank's cost-to-revenue efficiency ratio is below the deposit-weighted average of local incumbents) and the interest-expense-undercut indicator (one if more than half of self-excluded local incumbents pay a higher interest expense per dollar of assets than the focal bank) additively, alongside deposit beta. The additive coefficients on both cost-side binaries are economically small and statistically indistinguishable from zero in every bucket. A cost-efficient bank is not on average more likely to enter the marginal ZIP, controlling for deposit beta and the demand vector. The cost-side edge does not show up as a separate driver of entry.
 
-    \vspace{0.25cm}
-{\small Panel A: Banks with Assets $\geq$ \$100B}\\
-    \resizebox{0.8\textwidth}{!}{
-\input{tables/tab_descriptive_stats_big}
-    }
-    \caption{Descriptive Statistics}
-    \label{tab:descriptive_stats}
-\end{table}
+Panel B interacts each cost-side binary with deposit beta. At banks at or above one hundred billion dollars, the interaction is positive and statistically resolved: the deposit beta $\times$ rate-paying-advantage coefficient is 0.019 (significant at the five percent level), and the deposit beta $\times$ IEA-undercut coefficient is 0.010 (significant at the ten percent level). The implied marginal effect of deposit beta on entry probability roughly doubles when the cost-side indicator switches from zero to one: a one-standard-deviation increase in deposit beta raises the entry probability by about 0.25 percentage points at a cost-edge-positive large bank, against 0.13 percentage points at a cost-edge-free large bank. The deposit-beta main coefficient in the interaction specification loses its standalone significance, consistent with the reading that the unconditional contestability response in Table~\ref{tab:deposit_beta_main} is loading on the subset of large banks that hold a cost edge against their local incumbents. At the ten-to-hundred and one-to-ten-billion buckets, the analogous interactions are not statistically distinguishable from zero, and the deposit-beta main coefficient retains its unconditional sign and significance. This bucket-asymmetric pattern is consistent with the descriptive moments in Section~\ref{sec:data:desc}: cost-structure dispersion across banks within a candidate ZIP is largest at the top of the size distribution, so the cost-side interaction has bite there and is mechanically compressed elsewhere.
 
-\clearpage
-\begin{table}[]
-    \centering
+The cost-side reading of the puzzle is therefore supported at the size stratum where the cost-side gap has cross-sectional variation to load on. Large banks that operate at a lower expense ratio than the incumbents they would face locally, or that fund themselves more cheaply than those incumbents, are the ones whose entry probability rises with the contestability of the candidate ZIP. The cost-side advantage looks less like a separate inducement to enter and more like a precondition under which the contestability sensitivity itself activates.
 
-    \vspace{0.25cm}
-{\small Panel B: Banks with Assets \$10B--\$100B}\\
-    \resizebox{0.8\textwidth}{!}{
-\input{tables/tab_descriptive_stats_mid}
-    }
+\subsection{Cross-Sell Presence}
+\label{sec:results:crosssell}
 
-\vspace{0.25cm}
-{\small Panel C: Banks with Assets \$1B--\$10B}\\
-    \resizebox{0.8\textwidth}{!}{
-\input{tables/tab_descriptive_stats_sml}
-    }
-\end{table}
+Table~\ref{tab:cross_sell} reads the lending-presence margin. The two binaries we use --- mortgage presence (one if the bank originates any HMDA-reported mortgage in the ZIP at $t-1$) and CRA small-business presence (one if the bank reports any CRA small-business loan in the county containing the ZIP at $t-1$) --- proxy for the bank's pre-existing non-branch customer touchpoint in the candidate market. Panel A adds each binary to deposit beta. The additive coefficients are positive and statistically resolved at the mid and small buckets: conditional on deposit beta, mortgage presence at $t-1$ raises the entry probability by 0.29 percentage points in the ten-to-hundred-billion bucket and 0.34 in the one-to-ten-billion bucket (both at the one percent level), and the analogous CRA-presence coefficients are 0.13 and 0.16 (also at the one percent level). At the largest banks, the additive coefficients are economically small and not robustly signed --- the lending channel is at near-saturation in that bucket and has little additive room to move.
 
-\clearpage
-\begin{table}[]
-    \centering
-    \adddescription{
-\small
-This table reports first-stage regressions of the change in deposit expense on bank and market characteristics for three sub-periods (Early, Mid, and Late). The dependent variable is the change in deposit expense. Explanatory variables include age bins, the fraction of dividend recipients, the fraction of college-educated residents, log family income, bank HHI, log bank assets, population density, transaction accounts over assets, the uninsured deposit share, and time deposits over assets. IID standard errors are reported in parentheses. *, **, and *** denote statistical significance at the 10\%, 5\%, and 1\% levels, respectively.
-    }
+Panel B interacts the lending binaries with deposit beta. The interaction signs are positive in every specification where they are statistically resolved. Among banks at or above one hundred billion dollars, the deposit beta $\times$ CRA-presence interaction is 0.054 at the one percent level --- the strongest interaction in any of the three results tables. The deposit-beta main coefficient in this column is statistically zero ($-0.020$), so the entire contestability response for the largest banks loads on the subset of ZIPs in which the bank already serves CRA small-business borrowers: a one-standard-deviation increase in deposit beta raises the entry probability by about 0.22 percentage points at a CRA-present large bank and is statistically indistinguishable from zero in CRA-absent ZIPs. Among smaller banks, the channel runs through mortgage presence more than through CRA presence. The deposit beta $\times$ mortgage-presence interaction is 0.012 (five percent level) in the mid bucket and 0.020 (one percent level) in the small bucket; the analogous deposit beta $\times$ CRA-presence interaction is 0.007 at the one percent level in the small bucket and is not resolved in the mid bucket. The cross-sell mechanism that activates the contestability response is bucket-dependent: CRA small-business presence carries the channel at the largest banks, mortgage presence carries it at the smallest, and the mid bucket loads weakly on both.
 
-    \resizebox{0.5\textwidth}{!}{
-\input{tables/tab_first_stage}
-    }
-    \caption{Deposit Beta First Stage}
-    \label{tab:first_stage}
-\end{table}
-
-\clearpage
-\begin{table}[]
-    \centering
-    \adddescription{
-\small
-This table reports linear probability model estimates of branch opening on the bank-cycle deposit beta and a battery of zip-level controls, separately by bank-size bucket. The dependent variable equals one if bank $b$ opens a branch in zip $z$ in year $t$. Columns 1--3 correspond to banks with assets of \$100B+, \$10B--\$100B, and \$1B--\$10B, respectively. Specifications include bank-by-year and state-by-year fixed effects. Standard errors (in parentheses) are clustered by bank and zip. *, **, and *** denote statistical significance at the 10\%, 5\%, and 1\% levels, respectively.
-    }
-
-    \resizebox{0.8\textwidth}{!}{
-\input{tables/tab_deposit_beta_main}
-    }
-    \caption{Branch Opening on Deposit Beta --- Main}
-    \label{tab:deposit_beta_main}
-\end{table}
-
-\clearpage
-\begin{table}[]
-    \centering
-    \adddescription{
-\small
-This table reports linear probability model estimates of branch opening on deposit beta and bank-level rate-paying capacity, separately by bank-size bucket. The dependent variable equals one if bank $b$ opens a branch in zip $z$ in year $t$. Within each size bucket, two columns alternate the proxy for rate-paying capacity: ``rp'' uses an indicator for the bank's rate-paying advantage relative to incumbents; ``iea'' uses an indicator for the bank's interest-expense-to-assets share undercut exceeding 0.5. Panel A reports additive specifications (deposit beta and the capacity proxy enter linearly). Panel B reports the deposit beta $\times$ capacity-proxy interaction. All specifications include the full set of zip-level controls, bank-by-year, and state-by-year fixed effects. Standard errors (in parentheses) are clustered by bank and zip. *, **, and *** denote statistical significance at the 10\%, 5\%, and 1\% levels, respectively.
-    }
-
-    \vspace{0.25cm}
-{\small Panel A: Additive Specification}\\
-    \resizebox{0.8\textwidth}{!}{
-\input{tables/tab_rate_paying}
-    }
-
-\vspace{0.25cm}
-{\small Panel B: Deposit Beta $\times$ Rate-Paying Advantage Interaction}\\
-    \resizebox{0.8\textwidth}{!}{
-\input{tables/tab_beta_x_advantage}
-    }
-    \caption{Branch Opening on Deposit Beta and Rate-Paying Advantage}
-    \label{tab:rate_paying_advantage}
-\end{table}
-
-\clearpage
-\begin{table}[]
-    \centering
-    \adddescription{
-\small
-This table reports linear probability model estimates of branch opening on deposit beta and bank-level cross-sell capacity, separately by bank-size bucket. The dependent variable equals one if bank $b$ opens a branch in zip $z$ in year $t$. Within each size bucket, two columns alternate the proxy for cross-sell capacity: ``mort'' uses an indicator for the bank's mortgage presence in the zip (HMDA, t-1); ``cra'' uses an indicator for the bank's CRA small-business lending presence in the zip (t-1). Panel A reports additive specifications (deposit beta and the cross-sell proxy enter linearly). Panel B reports the deposit beta $\times$ cross-sell-proxy interaction. All specifications include the full set of zip-level controls, bank-by-year, and state-by-year fixed effects. Standard errors (in parentheses) are clustered by bank and zip. *, **, and *** denote statistical significance at the 10\%, 5\%, and 1\% levels, respectively.
-    }
-
-    \vspace{0.25cm}
-{\small Panel A: Additive Specification}\\
-    \resizebox{0.8\textwidth}{!}{
-\input{tables/tab_cross_sell_additive}
-    }
-
-\vspace{0.25cm}
-{\small Panel B: Deposit Beta $\times$ Cross-Sell Capacity Interaction}\\
-    \resizebox{0.8\textwidth}{!}{
-\input{tables/tab_cross_sell_interaction}
-    }
-    \caption{Branch Opening on Deposit Beta and Cross-Sell Capacity}
-    \label{tab:cross_sell}
-\end{table}
+Read together with the cost-side results, the lending-presence margin completes the resolution of the puzzle. The unconditional positive coefficient on deposit beta in Table~\ref{tab:deposit_beta_main} is not a free lunch; it is a conditional response that loads on whichever complementary edge --- cost-side at the largest banks, lending presence across the size distribution --- gives the bank a margin beyond the deposit rate on which to monetize the customer. Where the bank holds no such edge, the contestability response weakens or disappears, and the unconditional finding from \citet{narayanan2025decline} ceases to describe the bank's entry decision. The puzzle of why profit-maximizing banks open in markets where the average deposit dollar is less profitable resolves once we condition on the complementary margin: they do so precisely when, and at the size strata at which, that margin is available to them.
